@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="대한민국 우표를 찾고 기록하는 수집 앱 우표모아.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="우표모아">
+  <meta name="theme-color" content="#FFFDF8">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>우표모아</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <style>
+    body { margin: 0; background: #FFFDF8; }
+    #launch { position: fixed; inset: 0; display: grid; place-content: center;
+      text-align: center; color: #263D39; font-family: sans-serif; }
+    #launch img { width: 128px; height: 128px; border-radius: 32px; margin: auto; }
+    #launch h1 { font-size: 30px; margin: 24px 0 10px; }
+    #launch p { font-size: 14px; color: #687C77; margin: 0; }
+  </style>
+  <div id="launch" role="status" aria-label="우표모아 시작 중">
+    <img src="icons/Icon-192.png" alt="">
+    <h1>우표모아</h1><p>좋아하는 우표를, 하나씩</p>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', () => document.getElementById('launch')?.remove());
+  </script>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js?v=20260919-match5" async></script>
+</body>
+</html>
