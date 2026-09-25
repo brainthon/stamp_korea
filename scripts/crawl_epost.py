@@ -4,6 +4,7 @@ python scripts/crawl_epost.py --pages 10 --output assets/catalog/official_stamps
 Use --pages 0 to follow all list pages. Requests are sequential and cached.
 """
 import argparse, hashlib, json, re, time, subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.parse import urljoin, urlparse, parse_qs
@@ -11,12 +12,13 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 BASE = 'https://stamp.epost.go.kr'
+REQUEST_DELAY = 1.0
 
 def fetch(url, cache):
     path = cache / (hashlib.sha256(url.encode()).hexdigest() + '.html')
     if path.exists():
         return path.read_text()
-    time.sleep(1)
+    time.sleep(REQUEST_DELAY)
     for attempt in range(3):
         try:
             # curl uses the operating system's CA store; TLS verification stays enabled.
@@ -51,9 +53,10 @@ def parse_detail(html, url):
     if urlparse(image_url).hostname != 'image.epost.go.kr': raise ValueError('unexpected image host')
     name = table.find('caption').get_text(strip=True)
     design = fields.get('디자인','')
+    volume_match = re.search(r'[\d,]+', fields.get('발행량',''))
     return dict(id='epost_'+number, name=name, country='대한민국', stamp_number=number,
         year=date[0], issue_date=f'{int(date[0]):04}-{int(date[1]):02}-{int(date[2]):02}',
-        issue_volume=int(re.search(r'[\d,]+', fields.get('발행량','0')).group().replace(',','')),
+        issue_volume=int(volume_match.group().replace(',','')) if volume_match else 0,
         issue_volume_display=fields.get('발행량',''), face_value=fields.get('액면가격',''),
         category='우표', issue_count=fields.get('종수',''), design=design, designer=fields.get('디자이너',''),
         printer=fields.get('인쇄처',''), printing=fields.get('인쇄 및 색수',''),
@@ -65,9 +68,14 @@ def parse_detail(html, url):
         source_sha256=hashlib.sha256(html.encode()).hexdigest())
 
 def main():
+    global REQUEST_DELAY
     p=argparse.ArgumentParser(); p.add_argument('--pages',type=int,default=10)
+    p.add_argument('--delay',type=float,default=1.0,
+        help='seconds between uncached requests (minimum 0.5)')
+    p.add_argument('--workers',type=int,default=1,
+        help='parallel detail requests (maximum 4)')
     p.add_argument('--output',type=Path,required=True); p.add_argument('--cache',type=Path,default=Path('.epost-cache'))
-    a=p.parse_args(); a.cache.mkdir(parents=True,exist_ok=True)
+    a=p.parse_args(); REQUEST_DELAY=max(0.5,a.delay); a.cache.mkdir(parents=True,exist_ok=True)
     records={r['id']:r for r in json.loads(a.output.read_text())} if a.output.exists() else {}
     seen=set(); failures=[]; page=1
     while a.pages == 0 or page <= a.pages:
@@ -81,11 +89,15 @@ def main():
             canonical=BASE+'/sp2/sg/spsg0102.jsp?tbsmh15seqnum='+q['tbsmh15seqnum'][0]+'&tbsmh01seqnum='+q['tbsmh01seqnum'][0]
             if canonical not in seen: seen.add(canonical); links.append(canonical)
         if not links: break
-        for url in links:
+        def load_detail(url):
             try:
-                record=parse_detail(fetch(url,a.cache),url)
-                records[record['id']]=record
-            except Exception as e: failures.append({'url':url,'error':str(e)})
+                return parse_detail(fetch(url,a.cache),url), None
+            except Exception as e:
+                return None, {'url':url,'error':str(e)}
+        with ThreadPoolExecutor(max_workers=max(1,min(4,a.workers))) as pool:
+            for record, failure in pool.map(load_detail, links):
+                if record: records[record['id']]=record
+                if failure: failures.append(failure)
         a.output.parent.mkdir(parents=True,exist_ok=True)
         a.output.write_text(json.dumps(list(records.values()),ensure_ascii=False,indent=2))
         print(f'page={page} records={len(records)} failed={len(failures)}',flush=True)

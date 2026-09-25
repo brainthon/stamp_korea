@@ -1,6 +1,1 @@
-import Flutter
-import UIKit
-
-class SceneDelegate: FlutterSceneDelegate {
-
-}
+// App lifecycle is handled by AppDelegate for the installed Flutter SDK.

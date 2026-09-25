@@ -24,6 +24,7 @@ test('printed amount without won and missing tiny year do not reject a distincti
 test('reference fetching is restricted to this project public official-image bucket',()=>{
   const project='https://example.supabase.co';
   assert.equal(validReference(project+'/storage/v1/object/public/official-stamps/a.jpg',project),true);
-  for(const url of ['http://127.0.0.1/a','https://evil.test/a',project+'/storage/v1/object/public/stamp-photos/a.jpg',project.replace('https:','http:')+'/storage/v1/object/public/official-stamps/a'])
+  assert.equal(validReference('https://image.epost.go.kr/stamp/data_img/so/a.jpg',project),true);
+  for(const url of ['http://127.0.0.1/a','https://evil.test/a','https://image.epost.go.kr/private/a.jpg',project+'/storage/v1/object/public/stamp-photos/a.jpg',project.replace('https:','http:')+'/storage/v1/object/public/official-stamps/a'])
     assert.equal(validReference(url,project),false);
 });

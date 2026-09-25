@@ -1,10 +1,14 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key, required this.child});
+  const SplashScreen({
+    super.key,
+    required this.child,
+    this.initialization,
+  });
   final Widget child;
+  final Future<void>? initialization;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -12,20 +16,21 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool ready = false;
-  late final Timer timer;
 
   @override
   void initState() {
     super.initState();
-    timer = Timer(const Duration(milliseconds: 1200), () {
-      if (mounted) setState(() => ready = true);
-    });
+    Future.wait<void>([
+      widget.initialization ?? Future<void>.value(),
+      Future<void>.delayed(const Duration(milliseconds: 1200)),
+    ]).then<void>(
+      (_) => _showApp(),
+      onError: (Object _, StackTrace __) => _showApp(),
+    );
   }
 
-  @override
-  void dispose() {
-    timer.cancel();
-    super.dispose();
+  void _showApp() {
+    if (mounted) setState(() => ready = true);
   }
 
   @override

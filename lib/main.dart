@@ -6,7 +6,7 @@ import 'theme/app_theme.dart';
 import 'screens/main_nav_screen.dart';
 import 'screens/splash_screen.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 상태바 스타일 설정
@@ -17,17 +17,23 @@ void main() async {
     ),
   );
 
-  // Supabase 클라우드 서비스 초기화
-  await SupabaseService.initialize();
-
-  // 로컬 수집 도감 서비스 초기화
-  await CollectionService.initialize();
-
   runApp(const StampKoreaApp());
 }
 
-class StampKoreaApp extends StatelessWidget {
+class StampKoreaApp extends StatefulWidget {
   const StampKoreaApp({super.key});
+
+  @override
+  State<StampKoreaApp> createState() => _StampKoreaAppState();
+}
+
+class _StampKoreaAppState extends State<StampKoreaApp> {
+  late final Future<void> initialization = _initialize();
+
+  Future<void> _initialize() async {
+    await SupabaseService.initialize();
+    await CollectionService.initialize();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +43,10 @@ class StampKoreaApp extends StatelessWidget {
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
       themeMode: ThemeMode.light,
-      home: const SplashScreen(child: MainNavScreen()),
+      home: SplashScreen(
+        initialization: initialization,
+        child: const MainNavScreen(),
+      ),
     );
   }
 }

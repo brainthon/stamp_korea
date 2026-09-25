@@ -12,12 +12,12 @@ Deno.serve(async(req)=>{
   if(hash!==TOKEN_HASH) return new Response("Unauthorized",{status:401});
   const url=Deno.env.get("SUPABASE_URL")!;
   const admin=createClient(url,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
-  const {data:rows,error}=await admin.from("official_stamp_catalog").select("id,data").eq("source_verified",false).order("id").limit(8);
+  const {data:rows,error}=await admin.from("official_stamp_catalog").select("id,data").eq("source_verified",false).order("id").limit(48);
   if(error) return Response.json({error:"catalog_read_failed"},{status:500});
   const done=[],failed=[];
-  for(const row of rows||[]) {
+  const importRow=async(row:{id:string;data:Record<string,unknown>})=>{
     try {
-      const source=new URL(row.data.source_image_url||row.data.image_url);
+      const source=new URL(String(row.data.source_image_url||row.data.image_url));
       if(source.protocol!=="https:" || source.hostname!=="image.epost.go.kr" || !source.pathname.startsWith('/stamp/data_img/')) throw Error('source');
       const r=await fetch(source,{signal:AbortSignal.timeout(7000),redirect:"error"});
       if(!r.ok) throw Error('fetch');
@@ -32,8 +32,14 @@ Deno.serve(async(req)=>{
       const data={...row.data,image_url:url+'/storage/v1/object/public/official-stamps/'+path,image_sha256:imageHash};
       const update=await admin.from('official_stamp_catalog').update({data,source_verified:true,updated_at:new Date().toISOString()}).eq('id',row.id);
       if(update.error) throw Error('update');
-      done.push(row.id);
-    } catch(e) {failed.push({id:row.id,stage:e instanceof Error?e.message:'unknown'});}
+      return {id:row.id,ok:true,stage:"done"};
+    } catch(e) {return {id:row.id,ok:false,stage:e instanceof Error?e.message:'unknown'};}
+  };
+  for(let offset=0;offset<(rows||[]).length;offset+=8) {
+    const results=await Promise.all((rows||[]).slice(offset,offset+8).map(importRow));
+    for(const result of results) {
+      if(result.ok) done.push(result.id); else failed.push({id:result.id,stage:result.stage});
+    }
   }
   return Response.json({done,failed});
 });

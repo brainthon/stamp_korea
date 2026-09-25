@@ -28,7 +28,11 @@ export function decideMatch(observed:Observation, candidates:Official[], compari
 export function validReference(url:string, projectUrl:string) {
   try {
     const u=new URL(url), p=new URL(projectUrl);
-    return u.protocol==='https:' && u.hostname===p.hostname &&
-      u.pathname.startsWith('/storage/v1/object/public/official-stamps/') && !u.username && !u.password;
+    if(u.protocol!=='https:' || u.username || u.password) return false;
+    const stored=u.hostname===p.hostname &&
+      u.pathname.startsWith('/storage/v1/object/public/official-stamps/');
+    const officialSource=u.hostname==='image.epost.go.kr' &&
+      u.pathname.startsWith('/stamp/data_img/');
+    return stored || officialSource;
   } catch {return false;}
 }

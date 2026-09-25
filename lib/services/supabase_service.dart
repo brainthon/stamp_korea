@@ -96,12 +96,18 @@ class SupabaseService {
     if (sb == null) return null;
 
     try {
-      final official = await sb
-          .from('official_stamp_catalog')
-          .select('data')
-          .eq('source_verified', true)
-          .order('id')
-          .limit(1000);
+      const pageSize = 1000;
+      final official = <Map<String, dynamic>>[];
+      for (var offset = 0; ; offset += pageSize) {
+        final page = await sb
+            .from('official_stamp_catalog')
+            .select('data')
+            .eq('source_verified', true)
+            .order('id')
+            .range(offset, offset + pageSize - 1);
+        official.addAll(page.map((row) => Map<String, dynamic>.from(row)));
+        if (page.length < pageSize) break;
+      }
       if (official.isNotEmpty) {
         return official
             .map(

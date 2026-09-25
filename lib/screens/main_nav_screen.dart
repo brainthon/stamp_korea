@@ -27,6 +27,7 @@ class MainNavScreen extends StatefulWidget {
 
 class _MainNavScreenState extends State<MainNavScreen> {
   int tab = 0;
+  int catalogLimit = 24;
   String query = '', theme = '전체', collectionFilter = '전체';
   bool newest = false;
   final search = TextEditingController();
@@ -53,7 +54,6 @@ class _MainNavScreenState extends State<MainNavScreen> {
       }
     });
     CollectionService.notifier.addListener(refresh);
-    StampRepository.syncWithCloud().then((_) => refresh());
     accountId = SupabaseService.currentUser?.id;
     authSubscription = SupabaseService.authStateChanges?.listen(
       (state) {
@@ -108,20 +108,29 @@ class _MainNavScreenState extends State<MainNavScreen> {
     super.dispose();
   }
 
-  void navigate(int index) => setState(() {
-    tab = index;
-  });
+  void navigate(int index) {
+    setState(() => tab = index);
+  }
+
   void notify(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-  void browse([String value = '전체']) => setState(() {
-    tab = 1;
-    theme = value;
-  });
+  void browse([String value = '전체']) {
+    setState(() {
+      tab = 1;
+      theme = value;
+      catalogLimit = 24;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 850;
-    final body = [home, catalog, scanner, collection][tab]();
+    final body = switch (tab) {
+      0 => home(),
+      1 => catalog(),
+      2 => scanner(),
+      _ => collection(),
+    };
     return Scaffold(
       body: SafeArea(
         child: Row(
@@ -458,7 +467,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
       heading('THE KOREAN STAMP ARCHIVE', '우표 도감'),
       TextField(
         controller: search,
-        onChanged: (v) => setState(() => query = v),
+        onChanged:
+            (v) => setState(() {
+              query = v;
+              catalogLimit = 24;
+            }),
         decoration: InputDecoration(
           hintText: '우표 이름, 발행연도, 키워드',
           prefixIcon: const Icon(Icons.search),
@@ -469,7 +482,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
                     tooltip: '검색어 지우기',
                     onPressed: () {
                       search.clear();
-                      setState(() => query = '');
+                      setState(() {
+                        query = '';
+                        catalogLimit = 24;
+                      });
                     },
                     icon: const Icon(Icons.close),
                   ),
@@ -487,7 +503,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       child: ChoiceChip(
                         label: Text(t),
                         selected: theme == t,
-                        onSelected: (_) => setState(() => theme = t),
+                        onSelected:
+                            (_) => setState(() {
+                              theme = t;
+                              catalogLimit = 24;
+                            }),
                       ),
                     ),
                   )
@@ -500,7 +520,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
           Text('${stamps.length}종의 우표', style: const TextStyle(color: _muted)),
           const Spacer(),
           TextButton.icon(
-            onPressed: () => setState(() => newest = !newest),
+            onPressed:
+                () => setState(() {
+                  newest = !newest;
+                  catalogLimit = 24;
+                }),
             icon: const Icon(Icons.swap_vert, size: 17),
             label: Text(newest ? '최신 발행순' : '오래된 발행순'),
           ),
@@ -510,7 +534,16 @@ class _MainNavScreenState extends State<MainNavScreen> {
       if (stamps.isEmpty)
         empty('검색 결과가 없어요', '다른 이름이나 발행연도로 찾아보세요.', Icons.search_off)
       else
-        grid(stamps),
+        grid(stamps.take(catalogLimit).toList()),
+      if (stamps.length > catalogLimit) ...[
+        const SizedBox(height: 20),
+        Center(
+          child: OutlinedButton(
+            onPressed: () => setState(() => catalogLimit += 24),
+            child: Text('더 보기 (${stamps.length - catalogLimit}종 남음)'),
+          ),
+        ),
+      ],
     ]);
   }
 
