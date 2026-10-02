@@ -60,3 +60,6 @@ config/development.json
 **/__pycache__/
 .agents/
 .codex/
+
+# Temporary document rendering files
+/tmp/

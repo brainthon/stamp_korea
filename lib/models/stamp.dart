@@ -24,7 +24,7 @@ enum RarityTier {
 enum StampCondition {
   mint('신품 (미사용)', '미사용 원본 상태, 뒷면 풀 보존', 0xFF2E7D32),
   used('사용제 (소인)', '우편 소인(도장)이 찍힌 실사용 우표', 0xFF1565C0),
-  fdc('초일봉피 (기념봉투)', '발행 첫날 소인이 찍힌 기념 봉투/우표', 0xFFC2185B),
+  fdc('초일봉투 (기념봉투)', '발행 첫날 소인이 찍힌 기념 봉투/우표', 0xFFC2185B),
   sheet('전지/시트', '낱장이 아닌 전지 또는 소형 시트 형태', 0xFFE65100);
 
   final String title;
@@ -146,7 +146,7 @@ class CollectionItem {
   final String? storageLocation; // 보관함 번호 또는 앨범 페이지
   final String? memo;
   final String? userImagePath; // 사용자가 직접 촬영한 로컬 우표 사진 경로
-  final String? userImageUrl; // Supabase Storage에 업로드된 영구 이미지 URL
+  final String? userImageUrl; // 표시용 임시 서명 URL 또는 게스트의 로컬 이미지
 
   CollectionItem({
     required this.id,

@@ -1,4 +1,5 @@
 import 'stamp.dart';
+import 'stamp_theme.dart';
 
 class OfficialStamp {
   OfficialStamp(this.data);
@@ -33,7 +34,15 @@ class OfficialStamp {
     issueVolume: (data['issue_volume'] as num?)?.toInt() ?? 0,
     faceValue: value('face_value'),
     category: value('category'),
-    theme: value('theme').isEmpty ? '기타' : value('theme'),
+    theme:
+        StampTheme.names.contains(value('theme')) ||
+                value('theme') == StampTheme.unclassified
+            ? value('theme')
+            : StampTheme.classify(
+              name: name,
+              design: value('design'),
+              description: description,
+            ),
     designer: value('designer'),
     printer: value('printer'),
     rarity: RarityTier.n,

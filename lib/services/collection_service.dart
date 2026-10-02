@@ -1,3 +1,4 @@
+import 'wishlist_service.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'supabase_service.dart';
 class CollectionService {
   static List<CollectionItem> _items = [];
   static Set<String> _wishlistIds = {};
+  static final Set<String> _wishlistBusy = {};
   static bool _initialized = false;
   static String? _owner;
   static int _generation = 0;
@@ -28,14 +30,17 @@ class CollectionService {
     _initialized = true;
     await StampRepository.initialize();
     await SupabaseService.initialize();
-    SupabaseService.authStateChanges?.listen((state) {
-      if (state.session?.user.id != _owner) {
-        reloadForAccount();
-      }
-    }, onError: (_) {
-      syncError = '로그인 연결을 확인하고 다시 시도해 주세요.';
-      notifier.value++;
-    });
+    SupabaseService.authStateChanges?.listen(
+      (state) {
+        if (state.session?.user.id != _owner) {
+          reloadForAccount();
+        }
+      },
+      onError: (_) {
+        syncError = '로그인 연결을 확인하고 다시 시도해 주세요.';
+        notifier.value++;
+      },
+    );
     await reloadForAccount();
   }
 
@@ -44,6 +49,7 @@ class CollectionService {
     _owner = SupabaseService.currentUser?.id;
     _items = [];
     _wishlistIds = {};
+    _wishlistBusy.clear();
     syncError = null;
     loading = true;
     notifier.value++;
@@ -53,6 +59,14 @@ class CollectionService {
       if (generation != _generation) return;
       _wishlistIds = (prefs.getStringList(wishKey) ?? []).toSet();
       if (_owner != null) {
+        final owner = _owner!;
+        await WishlistService.importLocal(owner, _wishlistIds);
+        if (generation != _generation) return;
+        _wishlistIds = await WishlistService.fetch(owner);
+        if (generation != _generation) return;
+        // Remove the legacy local copy after successful migration. Cloud is authoritative.
+        await prefs.remove(wishKey);
+        if (generation != _generation) return;
         final remote = await SupabaseService.fetchCollections();
         if (generation != _generation) return;
         _items = remote ?? []; // An empty cloud collection is authoritative.
@@ -94,6 +108,11 @@ class CollectionService {
   static List<CollectionItem> getItems() => List.unmodifiable(_items);
   static bool isCollected(String stampId) =>
       _items.any((i) => i.stampId == stampId);
+  static List<CollectionItem> getItemsByStampId(String stampId) =>
+      _items.where((item) => item.stampId == stampId).toList();
+  static int countByStampId(String stampId) =>
+      getItemsByStampId(stampId).fold(0, (total, item) => total + item.count);
+
   static CollectionItem? getItemByStampId(String stampId) {
     for (final item in _items) {
       if (item.stampId == stampId) return item;
@@ -128,9 +147,7 @@ class CollectionService {
     final saved = CollectionItem.fromMap(map);
     if (_owner != null) await SupabaseService.saveCollection(saved);
     _check(generation);
-    final index = _items.indexWhere(
-      (i) => i.id == saved.id || i.stampId == saved.stampId,
-    );
+    final index = _items.indexWhere((i) => i.id == saved.id);
     if (index >= 0) {
       _items[index] = saved;
     } else {
@@ -158,17 +175,35 @@ class CollectionService {
     await prefs.setStringList(key, values);
   }
 
+  static int get wishlistCount => _wishlistIds.length;
+
   static bool isWishlisted(String id) => _wishlistIds.contains(id);
   static Future<void> toggleWishlist(String id) async {
-    if (_wishlistIds.contains(id)) {
-      _wishlistIds.remove(id);
-    } else {
-      _wishlistIds.add(id);
+    final generation = _generation;
+    _check(generation);
+    if (_wishlistBusy.contains(id)) return;
+    _wishlistBusy.add(id);
+    final wanted = !_wishlistIds.contains(id);
+    try {
+      if (_owner != null) {
+        await WishlistService.set(_owner!, id, wanted);
+        _check(generation);
+      }
+      if (wanted) {
+        _wishlistIds.add(id);
+      } else {
+        _wishlistIds.remove(id);
+      }
+      if (_owner == null) {
+        final key = _wishlistKey, values = _wishlistIds.toList();
+        final prefs = await SharedPreferences.getInstance();
+        _check(generation);
+        await prefs.setStringList(key, values);
+      }
+      notifier.value++;
+    } finally {
+      if (generation == _generation) _wishlistBusy.remove(id);
     }
-    final key = _wishlistKey, values = _wishlistIds.toList();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(key, values);
-    notifier.value++;
   }
 
   // Statistics
@@ -199,6 +234,7 @@ class CollectionService {
       'totalDbCount': totalDatabaseCount,
       'uniqueCollected': collectedUniqueCount,
       'totalPieces': totalPieces,
+      'wishlistCount': _wishlistIds.length,
       'completionRate': overallPercentage,
       'conditions': conditionMap,
       'eraCollected': eraMap,

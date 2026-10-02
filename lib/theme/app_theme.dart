@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const primaryBlack = Color(0xFF18796B);
-  static const accentCrimson = Color(0xFFC85B47);
-  static const accentGold = Color(0xFFB88B48);
-  static const subtleGray = Color(0xFFF0F8F5);
-  static const borderGray = Color(0xFFE5EEEA);
-  static const textMain = Color(0xFF263D39);
-  static const textMuted = Color(0xFF687C77);
-  static const canvas = Color(0xFFFFFDF8);
-  static const mint = Color(0xFFDDF6EB);
-  static const peach = Color(0xFFFFE8DC);
+  static const primaryBlack = Color(0xFF2463B5);
+  static const accentCrimson = Color(0xFFD85A46);
+  static const accentGold = Color(0xFFE6AF48);
+  static const subtleGray = Color(0xFFF0F7FF);
+  static const borderGray = Color(0xFFDDE8F2);
+  static const textMain = Color(0xFF253247);
+  static const textMuted = Color(0xFF596575);
+  static const canvas = Color(0xFFFCF9F3);
+  static const mint = Color(0xFFE0EFFF);
+  static const peach = Color(0xFFFFEFCC);
   static ThemeData lightTheme() {
     final scheme = ColorScheme.fromSeed(seedColor: primaryBlack).copyWith(
       primary: primaryBlack,
@@ -44,7 +44,7 @@ class AppTheme {
         ),
         titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         bodyLarge: TextStyle(fontSize: 15, height: 1.65),
-        bodyMedium: TextStyle(fontSize: 13, height: 1.5),
+        bodyMedium: TextStyle(fontSize: 14, height: 1.5),
       ).apply(bodyColor: textMain, displayColor: textMain),
       appBarTheme: const AppBarTheme(
         backgroundColor: canvas,
@@ -81,10 +81,32 @@ class AppTheme {
           borderSide: const BorderSide(color: borderGray),
         ),
       ),
-      navigationBarTheme: const NavigationBarThemeData(
+      navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
         indicatorColor: mint,
         height: 76,
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontSize: 13,
+            fontWeight:
+                states.contains(WidgetState.selected)
+                    ? FontWeight.w800
+                    : FontWeight.w500,
+            color:
+                states.contains(WidgetState.selected)
+                    ? primaryBlack
+                    : textMuted,
+          ),
+        ),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color:
+                states.contains(WidgetState.selected)
+                    ? primaryBlack
+                    : textMuted,
+            size: 26,
+          ),
+        ),
       ),
       dividerColor: borderGray,
     );

@@ -15,8 +15,9 @@
       }
     }
   }
+  const version = new URLSearchParams(location.search).get('v') || '20261002-notice-title1';
   for (const build of _flutter.buildConfig.builds) {
-    if (build.mainJsPath) build.mainJsPath += '?v=20260919-match5';
+    if (build.mainJsPath) build.mainJsPath += '?v=' + encodeURIComponent(version);
   }
   _flutter.loader.load();
 })();

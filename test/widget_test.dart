@@ -13,74 +13,89 @@ void main() {
     await CollectionService.initialize();
   });
 
+  catalogTestWidgets('home theme opens a filtered catalog on mobile', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const StampKoreaApp());
+    await tester.pump(const Duration(milliseconds: 1300));
+    await tester.pumpAndSettle();
+    final count = StampRepository.searchStamps(theme: '스포츠').length;
+    final chip = find.widgetWithText(InkWell, '스포츠');
+    await tester.scrollUntilVisible(
+      chip,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await Scrollable.ensureVisible(tester.element(chip), alignment: 0.5);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(find.text('$count종의 우표'), findsOneWidget);
+    final selected = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, '스포츠'),
+    );
+    expect(selected.selected, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   catalogTestWidgets(
-    'mobile: search, wishlist, save, edit and delete a collection record',
+    'visitor sees public catalog but personal actions require login',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      expect(CollectionService.getItems(), isEmpty);
       await tester.pumpWidget(const StampKoreaApp());
       await tester.pump(const Duration(milliseconds: 1300));
       await tester.pumpAndSettle();
-      expect(find.text('작은 한 장,\n새로운 발견.'), findsNothing);
-      expect(find.text('당신의 수집이, 이야기가 되는 곳'), findsOneWidget);
-      expect(tester.takeException(), isNull);
+      expect(find.text('차곡차곡, 나의 수집'), findsNothing);
+      expect(find.text('수집한 우표'), findsNothing);
+      expect(find.text('나만의 우표 수집을 시작하세요'), findsOneWidget);
+      await tester.tap(find.text('내 수집함').last);
+      await tester.pumpAndSettle();
+      expect(find.text('좋아하는 우표를 한곳에'), findsOneWidget);
+      expect(find.text('수집 기록 복사'), findsNothing);
+      expect(find.text('0종'), findsNothing);
+      await tester.tap(find.text('사진 판독').last);
+      await tester.pumpAndSettle();
+      expect(find.text('사진 한 장으로 우표 찾기'), findsOneWidget);
+      expect(find.text('우표 촬영'), findsNothing);
       await tester.tap(find.text('우표 도감').last);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '제21대 대통령 취임');
       await tester.pumpAndSettle();
       expect(find.text('1종의 우표'), findsOneWidget);
+      final before = CollectionService.isWishlisted('epost_3834');
       await tester.tap(find.byTooltip('위시리스트에 추가').first);
       await tester.pumpAndSettle();
-      expect(CollectionService.isWishlisted('epost_3834'), isTrue);
+      expect(find.text('이메일로 로그인'), findsOneWidget);
+      expect(CollectionService.isWishlisted('epost_3834'), before);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
       await tester.tap(find.text('제21대 대통령 취임').last);
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('내 수집함에 추가'),
+        find.text('로그인하고 수집함에 추가'),
         400,
         scrollable: find.byType(Scrollable).last,
       );
-      await tester.tap(find.text('내 수집함에 추가'));
+      await tester.tap(find.text('로그인하고 수집함에 추가'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('수량 늘리기'));
-      await tester.enterText(
-        find.widgetWithText(TextField, '수집 메모'),
-        '첫 수집 기록',
-      );
-      await tester.ensureVisible(find.text('수집 기록 저장'));
-      await tester.tap(find.text('수집 기록 저장'));
-      await tester.pumpAndSettle();
-      final item = CollectionService.getItemByStampId('epost_3834');
-      expect(item?.count, 2);
-      expect(item?.memo, '첫 수집 기록');
-      final prefs = await SharedPreferences.getInstance();
-      expect(
-        prefs.getStringList('user_stamp_collection_v1')!.single,
-        contains('첫 수집 기록'),
-      );
-      await tester.scrollUntilVisible(
-        find.text('수집 기록 삭제'),
-        250,
-        scrollable: find.byType(Scrollable).last,
-      );
-      await tester.tap(find.text('수집 기록 삭제'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('취소'));
-      await tester.pumpAndSettle();
-      expect(CollectionService.getItems(), isNotEmpty);
-      await tester.tap(find.text('수집 기록 삭제'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('삭제'));
-      await tester.pumpAndSettle();
+      expect(find.text('이메일로 로그인'), findsOneWidget);
+      expect(find.text('수집 기록 저장'), findsNothing);
       expect(CollectionService.getItems(), isEmpty);
-      expect(prefs.getStringList('user_stamp_collection_v1'), isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
 
-  catalogTestWidgets('320px and desktop layouts have no overflow', (tester) async {
+  catalogTestWidgets('320px and desktop layouts have no overflow', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

@@ -16,11 +16,13 @@ class RecognitionResultView extends StatefulWidget {
     required this.onSave,
     this.collected = false,
     this.onSelectCandidate,
+    this.onContribute,
   });
   final Recognition result;
   final Uint8List? photo;
   final VoidCallback onBack, onChoose, onSave;
   final bool collected;
+  final VoidCallback? onContribute;
   final ValueChanged<OfficialStamp>? onSelectCandidate;
   @override
   State<RecognitionResultView> createState() => _RecognitionResultViewState();
@@ -63,6 +65,12 @@ class _RecognitionResultViewState extends State<RecognitionResultView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       children: [
+        if (widget.onContribute != null)
+          TextButton.icon(
+            onPressed: widget.onContribute,
+            icon: const Icon(Icons.volunteer_activism_outlined),
+            label: const Text('정답 확인 · 판독 개선 사진 제공'),
+          ),
         Row(
           children: [
             IconButton(
@@ -252,7 +260,7 @@ class _RecognitionResultViewState extends State<RecognitionResultView> {
             ),
             const SizedBox(height: 8),
             const Text(
-              '도감에서 해당 우표를 선택해 주세요.',
+              '우표 영역을 자른 뒤 다시 판독하거나, 액면가와 글자가 보이게 정면에서 촬영해 주세요. 도감에서 직접 선택할 수도 있어요.',
               style: TextStyle(color: muted, height: 1.7),
             ),
           ] else

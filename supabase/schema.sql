@@ -7,6 +7,10 @@ create policy profiles_read_self on public.profiles for select to authenticated 
 create policy profiles_insert_self on public.profiles for insert to authenticated with check ((select auth.uid()) = id);
 create policy profiles_update_self on public.profiles for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 create policy collections_owner on public.user_collections for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+-- Personal collections require authentication; TRUNCATE bypasses row policies.
+revoke all on public.user_collections from anon;
+revoke truncate, references, trigger on public.user_collections from authenticated;
+grant select, insert, update, delete on public.user_collections to authenticated;
 create index if not exists user_collections_owner_idx on public.user_collections(user_id);
 create policy stamps_read on public.stamps for select to anon, authenticated using (true);
 -- Existing legacy bucket also becomes private; no existing files are deleted.

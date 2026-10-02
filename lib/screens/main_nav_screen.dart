@@ -1,7 +1,13 @@
+import '../widgets/notification_bell.dart';
+import 'contribution_screen.dart';
+import 'photo_crop_screen.dart';
+import '../services/photo_quality.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen.dart';
+import 'my_page_screen.dart';
+import '../widgets/member_access_card.dart';
 import '../services/supabase_service.dart';
 import '../services/recognition_service.dart';
 import 'package:flutter/material.dart';
@@ -30,8 +36,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
   int catalogLimit = 24;
   String query = '', theme = '전체', collectionFilter = '전체';
   bool newest = false;
+  bool showAllThemes = false;
   final search = TextEditingController();
   Uint8List? photo;
+  Uint8List? originalPhoto;
+  List<String> photoWarnings = [];
   bool picking = false, identifying = false;
   Recognition? recognition;
   String? scanError;
@@ -44,6 +53,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(
+      StampRepository.syncWithCloud().then((_) {
+        if (mounted) refresh();
+      }),
+    );
     dateTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       final now = DateTime.now();
       if (now.year != displayedDate.year ||
@@ -64,6 +78,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
           scanGeneration++;
           setState(() {
             photo = null;
+            originalPhoto = null;
+            photoWarnings = [];
             recognition = null;
             scanError = null;
             identifying = false;
@@ -83,9 +99,70 @@ class _MainNavScreenState extends State<MainNavScreen> {
     });
   }
 
-  void openAccount() => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const AuthScreen()));
+  void openAccount({bool signup = false}) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder:
+          (_) =>
+              SupabaseService.isLoggedIn
+                  ? MyPageScreen(
+                    onCollection: (filter) {
+                      if (mounted) {
+                        setState(() {
+                          tab = 3;
+                          collectionFilter = filter;
+                        });
+                      }
+                    },
+                    onStamp: (stamp) {
+                      if (mounted) unawaited(detail(stamp));
+                    },
+                  )
+                  : AuthScreen(initialSignup: signup),
+    ),
+  );
+
+  Widget accountButton() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const NotificationBell(),
+      IconButton(
+        tooltip: SupabaseService.isLoggedIn ? '마이페이지' : '로그인',
+        onPressed: openAccount,
+        icon: Icon(
+          SupabaseService.isLoggedIn
+              ? Icons.account_circle
+              : Icons.account_circle_outlined,
+        ),
+      ),
+    ],
+  );
+
+  Widget memberInvitation(
+    String title,
+    String description, {
+    IconData icon = Icons.collections_bookmark_outlined,
+    bool compact = false,
+  }) => MemberAccessCard(
+    title: title,
+    description: description,
+    icon: icon,
+    compact: compact,
+    onLogin: openAccount,
+    onSignup: () => openAccount(signup: true),
+  );
+
+  Future<void> toggleWishlist(String stampId) async {
+    if (!SupabaseService.isLoggedIn) {
+      openAccount();
+      return;
+    }
+    try {
+      await CollectionService.toggleWishlist(stampId);
+    } catch (_) {
+      if (mounted) notify('위시리스트를 저장하지 못했어요. 새로고침 후 다시 시도해 주세요.');
+    }
+  }
+
   Future<void> openRecovery() async {
     if (!mounted || recoveryOpen) return;
     recoveryOpen = true;
@@ -132,7 +209,9 @@ class _MainNavScreenState extends State<MainNavScreen> {
       _ => collection(),
     };
     return Scaffold(
+      extendBody: !wide,
       body: SafeArea(
+        bottom: wide,
         child: Row(
           children: [
             if (wide)
@@ -162,7 +241,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
                           ),
                           selected: i == tab,
                           selectedTileColor: AppTheme.mint,
-                          leading: Icon(_icons[i], color: _green),
+                          leading: Icon(
+                            _icons[i],
+                            color: i == tab ? _green : _muted,
+                          ),
                           title: Text(
                             _labels[i],
                             style: const TextStyle(fontWeight: FontWeight.w700),
@@ -197,14 +279,42 @@ class _MainNavScreenState extends State<MainNavScreen> {
       bottomNavigationBar:
           wide
               ? null
-              : NavigationBar(
-                selectedIndex: tab,
-                onDestinationSelected: navigate,
-                destinations: List.generate(
-                  4,
-                  (i) => NavigationDestination(
-                    icon: Icon(_icons[i]),
-                    label: _labels[i],
+              : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: const Color(0xFFECE7DF)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x12253247),
+                          blurRadius: 24,
+                          offset: Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(32),
+                      child: NavigationBar(
+                        backgroundColor: Colors.transparent,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 0,
+                        height: 72,
+                        selectedIndex: tab,
+                        onDestinationSelected: navigate,
+                        destinations: List.generate(
+                          4,
+                          (i) => NavigationDestination(
+                            icon: Icon(_icons[i]),
+                            selectedIcon: Icon(_icons[i], color: _green),
+                            label: _labels[i],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -220,7 +330,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
   static const _labels = ['홈', '우표 도감', '사진 판독', '내 수집함'];
 
   Widget page(List<Widget> children) => ListView(
-    padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+    key: ValueKey(tab),
+    padding: const EdgeInsets.fromLTRB(24, 24, 24, 116),
     children: children,
   );
   Widget heading(String eyebrow, String title, {Widget? trailing}) => Padding(
@@ -235,7 +346,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                 eyebrow,
                 style: const TextStyle(
                   color: _muted,
-                  fontSize: 11,
+                  fontSize: 13,
                   letterSpacing: 2,
                   fontWeight: FontWeight.w700,
                 ),
@@ -245,7 +356,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
             ],
           ),
         ),
-        if (trailing != null) trailing,
+        trailing ?? accountButton(),
       ],
     ),
   );
@@ -267,15 +378,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
         children: [
           const _Brand(),
           const Spacer(),
-          IconButton(
-            tooltip: SupabaseService.isLoggedIn ? '내 계정' : '로그인',
-            onPressed: openAccount,
-            icon: Icon(
-              SupabaseService.isLoggedIn
-                  ? Icons.account_circle
-                  : Icons.account_circle_outlined,
-            ),
-          ),
+          accountButton(),
           IconButton(
             tooltip: '앱 안내',
             onPressed: about,
@@ -314,7 +417,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       const Text(
                         '오늘의 우표',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 13,
                           letterSpacing: 2,
                           fontWeight: FontWeight.w800,
                         ),
@@ -380,7 +483,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       SizedBox(height: 5),
                       Text(
                         '사진을 찍고 수집을 시작하세요',
-                        style: TextStyle(color: _muted, fontSize: 12),
+                        style: TextStyle(color: _muted, fontSize: 13),
                       ),
                     ],
                   ),
@@ -392,65 +495,143 @@ class _MainNavScreenState extends State<MainNavScreen> {
         ),
       ),
       const SizedBox(height: 30),
-      section('차곡차곡, 나의 수집', () => navigate(3)),
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: _line),
-          borderRadius: BorderRadius.circular(20),
+      if (SupabaseService.isLoggedIn) ...[
+        section('차곡차곡, 나의 수집', () => navigate(3)),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: _line),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _Stat('${stats['uniqueCollected']}', '수집한 우표'),
+                  ),
+                  Expanded(child: _Stat('${stats['wishlistCount']}', '위시리스트')),
+                  Expanded(child: _Stat('${stamps.length}', '도감 등록 종수')),
+                ],
+              ),
+              const SizedBox(height: 22),
+              LinearProgressIndicator(
+                value: ((stats['completionRate'] as double) / 100).clamp(0, 1),
+                minHeight: 5,
+                borderRadius: BorderRadius.circular(8),
+                backgroundColor: const Color(0xFFE0EFFF),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '나만의 도감을 한 장씩 채워보세요',
+                  style: const TextStyle(fontSize: 13, color: _muted),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(child: _Stat('${stats['uniqueCollected']}', '수집한 우표')),
-                Expanded(child: _Stat('${stats['totalPieces']}', '보유한 수량')),
-                Expanded(child: _Stat('${stamps.length}', '도감 등록 종수')),
-              ],
-            ),
-            const SizedBox(height: 22),
-            LinearProgressIndicator(
-              value: ((stats['completionRate'] as double) / 100).clamp(0, 1),
-              minHeight: 5,
-              borderRadius: BorderRadius.circular(8),
-              backgroundColor: const Color(0xFFF0F1E9),
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '나만의 도감을 한 장씩 채워보세요',
-                style: const TextStyle(fontSize: 11, color: _muted),
+      ] else
+        memberInvitation(
+          '나만의 우표 수집을 시작하세요',
+          '무료회원으로 수집 기록과 위시리스트를 남겨보세요.\n우표도감은 가입 없이 둘러볼 수 있습니다.',
+          compact: true,
+        ),
+      const SizedBox(height: 30),
+      Row(
+        children: [
+          const Expanded(
+            child: Text(
+              '테마로 만나는 우표',
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -.7,
               ),
             ),
-          ],
-        ),
+          ),
+          TextButton(
+            onPressed: () => setState(() => showAllThemes = !showAllThemes),
+            child: Text(showAllThemes ? '접기' : '전체 테마'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final themes = StampRepository.getAllThemes()
+              .where((t) => t != '전체')
+              .take(showAllThemes ? 9 : 6);
+          const icons = [
+            Icons.account_balance_outlined,
+            Icons.palette_outlined,
+            Icons.landscape_outlined,
+            Icons.local_florist_outlined,
+            Icons.rocket_launch_outlined,
+            Icons.sports_tennis_outlined,
+            Icons.travel_explore_outlined,
+            Icons.public_outlined,
+            Icons.celebration_outlined,
+          ];
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children:
+                themes
+                    .toList()
+                    .asMap()
+                    .entries
+                    .map(
+                      (entry) => SizedBox(
+                        width: (constraints.maxWidth - 20) / 3,
+                        child: Material(
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            side: const BorderSide(color: _line),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => browse(entry.value),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 18,
+                                horizontal: 4,
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    icons[entry.key],
+                                    size: 25,
+                                    color: _green,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    entry.value,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+          );
+        },
       ),
       const SizedBox(height: 30),
-      section('테마로 만나는 우표', () => browse()),
+      section('새로 발행된 우표', () => browse()),
       const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children:
-            StampRepository.getAllThemes()
-                .where((t) => t != '전체')
-                .map(
-                  (t) => ActionChip(
-                    label: Text(t),
-                    onPressed: () => browse(t),
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: _line),
-                  ),
-                )
-                .toList(),
-      ),
-      const SizedBox(height: 30),
-      section('도감에서 발견하기', () => browse()),
-      const SizedBox(height: 12),
-      grid(stamps.take(4).toList()),
+      grid(StampRepository.getLatestIssuedStamps()),
       const SizedBox(height: 22),
     ]);
   }
@@ -470,6 +651,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
         onChanged:
             (v) => setState(() {
               query = v;
+              if (StampRepository.searchYear(v) != null) theme = '전체';
               catalogLimit = 24;
             }),
         decoration: InputDecoration(
@@ -570,12 +752,15 @@ class _MainNavScreenState extends State<MainNavScreen> {
     },
   );
   Widget tile(Stamp s, int i) {
-    final owned = CollectionService.getItemByStampId(s.id);
+    final owned =
+        SupabaseService.isLoggedIn
+            ? CollectionService.getItemByStampId(s.id)
+            : null;
     final backgrounds = [
-      const Color(0xFFFFF2CC),
-      const Color(0xFFFFE8DC),
-      const Color(0xFFDDF6EB),
-      const Color(0xFFEDE6FF),
+      const Color(0xFFFFF3D9),
+      const Color(0xFFFFF3D9),
+      const Color(0xFFEBF5FF),
+      const Color(0xFFEBF5FF),
     ];
     return Material(
       color: Colors.white,
@@ -602,12 +787,14 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       top: 3,
                       child: IconButton(
                         tooltip:
-                            CollectionService.isWishlisted(s.id)
+                            (SupabaseService.isLoggedIn &&
+                                    CollectionService.isWishlisted(s.id))
                                 ? '위시리스트에서 제거'
                                 : '위시리스트에 추가',
-                        onPressed: () => CollectionService.toggleWishlist(s.id),
+                        onPressed: () => toggleWishlist(s.id),
                         icon: Icon(
-                          CollectionService.isWishlisted(s.id)
+                          (SupabaseService.isLoggedIn &&
+                                  CollectionService.isWishlisted(s.id))
                               ? Icons.bookmark
                               : Icons.bookmark_border,
                           size: 20,
@@ -625,7 +812,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                 children: [
                   Text(
                     '${s.issueYear}  ·  ${s.category}',
-                    style: const TextStyle(color: _muted, fontSize: 10),
+                    style: const TextStyle(color: _muted, fontSize: 13),
                   ),
                   const SizedBox(height: 5),
                   Text(
@@ -640,9 +827,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
                   ),
                   const SizedBox(height: 7),
                   Text(
-                    owned == null ? s.faceValue : '✓ 소장 ${owned.count}장',
+                    owned == null
+                        ? s.faceValue
+                        : '✓ 소장 ${CollectionService.countByStampId(s.id)}장',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 13,
                       color: owned == null ? _muted : _green,
                       fontWeight: FontWeight.w600,
                     ),
@@ -657,33 +846,36 @@ class _MainNavScreenState extends State<MainNavScreen> {
   }
 
   Widget collection() {
+    if (!SupabaseService.isLoggedIn) {
+      return page([
+        heading('MY PERSONAL ARCHIVE', '내 수집함'),
+        const SizedBox(height: 24),
+        memberInvitation(
+          '좋아하는 우표를 한곳에',
+          '로그인하면 신품·사용품·전지·초일봉투를 따로 기록하고, 찾고 싶은 우표는 위시리스트에 모을 수 있어요.',
+        ),
+        const SizedBox(height: 20),
+        const Text('수집함은 공식 도감 이미지로 채워져요. 소장 형태와 수량, 메모만 기록하면 돼요.'),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          onPressed: () => browse(),
+          child: const Text('우표 도감 둘러보기'),
+        ),
+      ]);
+    }
     final all = StampRepository.getAllStamps();
     final stamps =
         all.where((s) {
           final item = CollectionService.getItemByStampId(s.id);
           return collectionFilter == '위시리스트'
-              ? CollectionService.isWishlisted(s.id)
+              ? (SupabaseService.isLoggedIn &&
+                  CollectionService.isWishlisted(s.id))
               : collectionFilter == '중복'
-              ? item != null && item.count > 1
+              ? CollectionService.countByStampId(s.id) > 1
               : item != null;
         }).toList();
     return page([
-      heading(
-        'MY PERSONAL ARCHIVE',
-        '내 수집함',
-        trailing: IconButton(
-          tooltip: '수집 기록 복사',
-          onPressed: () async {
-            await Clipboard.setData(
-              ClipboardData(
-                text: CollectionService.generateCatalogTextReport(),
-              ),
-            );
-            if (mounted) notify('수집 기록을 복사했어요.');
-          },
-          icon: const Icon(Icons.ios_share),
-        ),
-      ),
+      heading('MY PERSONAL ARCHIVE', '내 수집함', trailing: accountButton()),
       const Text('좋아하는 것을 모으는, 나만의 방식.', style: TextStyle(color: _muted)),
       const SizedBox(height: 22),
       Wrap(
@@ -729,16 +921,12 @@ class _MainNavScreenState extends State<MainNavScreen> {
         ),
       ],
       Text(
-        SupabaseService.isLoggedIn
-            ? '로그인한 계정의 Supabase 수집함입니다. 찜 목록은 이 기기에 저장됩니다.'
-            : '이 기기에 저장되는 개인 수집 기록입니다.',
-        style: const TextStyle(color: _muted, fontSize: 12),
+        '수집 기록은 계정에 저장되고 공식 도감 이미지로 표시됩니다. 위시리스트는 현재 이 기기에 저장됩니다.',
+        style: const TextStyle(color: _muted, fontSize: 13),
       ),
       TextButton(
         onPressed: openAccount,
-        child: Text(
-          SupabaseService.isLoggedIn ? '내 계정 관리' : '로그인하고 클라우드 수집함 이용하기',
-        ),
+        child: const Text('마이페이지 · 내 정보와 수집 현황'),
       ),
     ]);
   }
@@ -758,8 +946,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
           normalizeStampPhoto,
           await file.readAsBytes(),
         );
+        final warnings = await compute(inspectStampPhoto, bytes);
         if (mounted) {
           setState(() {
+            originalPhoto = bytes;
+            photoWarnings = warnings;
             photo = bytes;
             recognition = null;
             scanError = null;
@@ -776,8 +967,85 @@ class _MainNavScreenState extends State<MainNavScreen> {
     }
   }
 
+  Future<void> autoCropPhoto() async {
+    if (originalPhoto == null || picking || identifying) return;
+    final generation = scanGeneration;
+    setState(() => picking = true);
+    try {
+      final extracted = await compute(extractStampRegion, originalPhoto!);
+      if (!mounted || generation != scanGeneration) return;
+      if (extracted['found'] != true) {
+        notify('배경과 우표를 구분하기 어려워요. 직접 영역을 선택해 주세요.');
+        return;
+      }
+      final bytes = extracted['bytes'] as Uint8List;
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('우표 테두리를 확인해 주세요'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 220, child: Image.memory(bytes)),
+                  const Text('천공이나 도안이 지워졌다면 취소하고 직접 잘라 주세요.'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('적용'),
+                ),
+              ],
+            ),
+      );
+      if (accepted != true || !mounted || generation != scanGeneration) return;
+      final warnings = await compute(inspectStampPhoto, bytes);
+      if (!mounted || generation != scanGeneration) return;
+      setState(() {
+        photo = bytes;
+        photoWarnings = warnings;
+        recognition = null;
+        scanError = null;
+        scanGeneration++;
+      });
+    } catch (_) {
+      if (mounted) notify('자동 추출하지 못했어요. 직접 영역을 선택해 주세요.');
+    } finally {
+      if (mounted) setState(() => picking = false);
+    }
+  }
+
+  Future<void> cropPhoto() async {
+    if (originalPhoto == null || identifying || picking) return;
+    final generation = scanGeneration;
+    final result = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(builder: (_) => PhotoCropScreen(bytes: originalPhoto!)),
+    );
+    if (result == null || !mounted || generation != scanGeneration) return;
+    setState(() => picking = true);
+    try {
+      final warnings = await compute(inspectStampPhoto, result);
+      if (!mounted || generation != scanGeneration) return;
+      setState(() {
+        photo = result;
+        photoWarnings = warnings;
+        recognition = null;
+        scanError = null;
+        scanGeneration++;
+      });
+    } finally {
+      if (mounted) setState(() => picking = false);
+    }
+  }
+
   Future<void> identify() async {
-    if (photo == null || identifying) return;
+    if (photo == null || identifying || picking) return;
     if (!SupabaseService.isLoggedIn) {
       openAccount();
       return;
@@ -808,10 +1076,48 @@ class _MainNavScreenState extends State<MainNavScreen> {
     final official = recognition?.official;
     if (official == null) return;
     final stamp = official.toStamp();
-    if (mounted) await edit(stamp, bytes: photo);
+    if (mounted) await edit(stamp);
+  }
+
+  Future<void> openContributions({bool submit = false}) async {
+    if (!SupabaseService.isLoggedIn) {
+      openAccount();
+      return;
+    }
+    if (!mounted || !SupabaseService.isLoggedIn) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ContributionScreen(
+              photo: submit ? photo : null,
+              stampId: recognition?.official?.id,
+            ),
+      ),
+    );
   }
 
   Widget scanner() {
+    if (!SupabaseService.isLoggedIn) {
+      return page([
+        heading('STAMP SCANNER', '사진으로 우표 찾기'),
+        const SizedBox(height: 24),
+        memberInvitation(
+          '사진 한 장으로 우표 찾기',
+          '무료회원으로 로그인하고 우표를 촬영해 보세요. 공식 도감과 비교한 판독 결과를 내 수집함에 기록할 수 있어요.',
+          icon: Icons.filter_center_focus,
+        ),
+        const SizedBox(height: 24),
+        const _Tip(
+          Icons.photo_library_outlined,
+          '공식 이미지로 깔끔한 수집함',
+          '촬영 사진은 판독에만 사용하며 수집함에 자동 저장하지 않아요.',
+        ),
+        OutlinedButton(
+          onPressed: () => browse(),
+          child: const Text('우표 도감 둘러보기'),
+        ),
+      ]);
+    }
     if (recognition != null) {
       return RecognitionResultView(
         result: recognition!,
@@ -822,20 +1128,22 @@ class _MainNavScreenState extends State<MainNavScreen> {
         onBack: () => setState(() => recognition = null),
         onChoose: manualMatch,
         onSave: saveRecognized,
+        onContribute: () => openContributions(submit: true),
         onSelectCandidate:
             (stamp) => setState(() => recognition = recognition!.choose(stamp)),
       );
     }
     return page([
-      heading(
-        'STAMP SCANNER',
-        '사진으로 우표 찾기',
-        trailing: IconButton(
-          tooltip: '내 계정',
-          onPressed: openAccount,
-          icon: const Icon(Icons.account_circle_outlined),
-        ),
+      heading('STAMP SCANNER', '사진으로 우표 찾기', trailing: accountButton()),
+      TextButton(
+        onPressed: openContributions,
+        child: const Text('제공 사진 관리 · 검수'),
       ),
+      const Text(
+        '촬영 사진은 판독에만 사용하며 자동 저장하지 않아요.',
+        style: TextStyle(color: _muted),
+      ),
+      const SizedBox(height: 8),
       const Text('우표 한 장이 선명하게 보이도록 촬영해 주세요.', style: TextStyle(color: _muted)),
       const SizedBox(height: 24),
       Container(
@@ -862,8 +1170,32 @@ class _MainNavScreenState extends State<MainNavScreen> {
       ),
       const SizedBox(height: 20),
       if (photo != null) ...[
+        OutlinedButton.icon(
+          onPressed: picking || identifying ? null : autoCropPhoto,
+          icon: const Icon(Icons.auto_fix_high_outlined),
+          label: Text(picking ? '사진 처리 중…' : '자동 추출 · 배경 정리'),
+        ),
+        OutlinedButton.icon(
+          onPressed: picking || identifying ? null : cropPhoto,
+          icon: const Icon(Icons.crop),
+          label: const Text('우표 영역 자르기'),
+        ),
+        for (final warning in photoWarnings)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              warning,
+              style: const TextStyle(color: AppTheme.textMain),
+            ),
+          ),
+        if (photoWarnings.isNotEmpty)
+          const Text(
+            '사진 상태 참고 안내입니다. 확인 후 그대로 판독할 수도 있어요.',
+            style: TextStyle(color: _muted),
+          ),
+        const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: identifying ? null : identify,
+          onPressed: identifying || picking ? null : identify,
           icon: const Icon(Icons.auto_awesome_outlined),
           label: Text(
             identifying
@@ -932,7 +1264,6 @@ class _MainNavScreenState extends State<MainNavScreen> {
   }
 
   Future<void> manualMatch() async {
-    final captured = photo;
     final selected = await showModalBottomSheet<Stamp>(
       context: context,
       isScrollControlled: true,
@@ -988,7 +1319,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
         );
       },
     );
-    if (selected != null && mounted) await edit(selected, bytes: captured);
+    if (selected != null && mounted) await edit(selected);
   }
 
   Future<void> detail(Stamp stamp) async {
@@ -996,14 +1327,21 @@ class _MainNavScreenState extends State<MainNavScreen> {
       context,
       MaterialPageRoute(
         builder:
-            (context) => _StampDetail(stamp: stamp, onEdit: () => edit(stamp)),
+            (context) => _StampDetail(
+              stamp: stamp,
+              onEdit: (item) => edit(stamp, existing: item),
+              onWishlist: () => toggleWishlist(stamp.id),
+            ),
       ),
     );
     refresh();
   }
 
-  Future<void> edit(Stamp stamp, {Uint8List? bytes}) async {
-    final existing = CollectionService.getItemByStampId(stamp.id);
+  Future<void> edit(Stamp stamp, {CollectionItem? existing}) async {
+    if (!SupabaseService.isLoggedIn) {
+      openAccount();
+      return;
+    }
     final memo = TextEditingController(text: existing?.memo ?? '');
     final place = TextEditingController(text: existing?.storageLocation ?? '');
     int count = existing?.count ?? 1;
@@ -1033,6 +1371,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(stamp.name),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '공식 도감 이미지로 등록돼요. 촬영 사진은 저장하지 않아요.',
+                        style: TextStyle(color: _muted, fontSize: 14),
+                      ),
                       const SizedBox(height: 20),
                       Row(
                         children: [
@@ -1114,7 +1457,6 @@ class _MainNavScreenState extends State<MainNavScreen> {
                                         userImageUrl: existing?.userImageUrl,
                                         userImagePath: existing?.userImagePath,
                                       ),
-                                      photoBytes: bytes,
                                     );
                                     if (sheetContext.mounted) {
                                       Navigator.pop(sheetContext);
@@ -1220,7 +1562,7 @@ class _Stat extends StatelessWidget {
         style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 5),
-      Text(label, style: const TextStyle(color: _muted, fontSize: 10)),
+      Text(label, style: const TextStyle(color: _muted, fontSize: 13)),
     ],
   );
 }
@@ -1243,7 +1585,7 @@ class _Tip extends StatelessWidget {
             children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text(body, style: const TextStyle(color: _muted, fontSize: 12)),
+              Text(body, style: const TextStyle(color: _muted, fontSize: 13)),
             ],
           ),
         ),
@@ -1254,22 +1596,29 @@ class _Tip extends StatelessWidget {
 
 class _StampDetail extends StatelessWidget {
   final Stamp stamp;
-  final Future<void> Function() onEdit;
-  const _StampDetail({required this.stamp, required this.onEdit});
+  final Future<void> Function(CollectionItem?) onEdit;
+  final Future<void> Function() onWishlist;
+  const _StampDetail({
+    required this.stamp,
+    required this.onEdit,
+    required this.onWishlist,
+  });
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<int>(
     valueListenable: CollectionService.notifier,
     builder: (context, value, child) {
-      final item = CollectionService.getItemByStampId(stamp.id);
+      final loggedIn = SupabaseService.isLoggedIn;
+      final item =
+          loggedIn ? CollectionService.getItemByStampId(stamp.id) : null;
       return Scaffold(
         appBar: AppBar(
           title: const Text('우표 이야기'),
           actions: [
             IconButton(
               tooltip: '위시리스트 변경',
-              onPressed: () => CollectionService.toggleWishlist(stamp.id),
+              onPressed: onWishlist,
               icon: Icon(
-                CollectionService.isWishlisted(stamp.id)
+                (loggedIn && CollectionService.isWishlisted(stamp.id))
                     ? Icons.bookmark
                     : Icons.bookmark_border,
               ),
@@ -1282,11 +1631,8 @@ class _StampDetail extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                if ((item?.userImageUrl ?? stamp.imageUrl ?? '').isNotEmpty)
-                  StampDetailImage(
-                    url: item?.userImageUrl ?? stamp.imageUrl!,
-                    label: stamp.name,
-                  )
+                if ((stamp.imageUrl ?? '').isNotEmpty)
+                  StampDetailImage(url: stamp.imageUrl!, label: stamp.name)
                 else
                   Center(
                     child: StampVisualView(
@@ -1336,9 +1682,12 @@ class _StampDetail extends StatelessWidget {
                   stamp.id.startsWith('epost_')
                       ? '우표 설명 출처 · 한국우표포털'
                       : '기존 프로젝트의 샘플 정보입니다. 공식 발행자료와 대조가 필요합니다.',
-                  style: const TextStyle(color: _muted, fontSize: 11),
+                  style: const TextStyle(color: _muted, fontSize: 13),
                 ),
-                if (item != null) ...[
+                for (final item
+                    in loggedIn
+                        ? CollectionService.getItemsByStampId(stamp.id)
+                        : <CollectionItem>[]) ...[
                   const Divider(height: 40),
                   Text(
                     '내 소장 기록 · ${item.count}장',
@@ -1356,6 +1705,11 @@ class _StampDetail extends StatelessWidget {
                     Text(item.memo!),
                   ],
                   TextButton.icon(
+                    onPressed: () => onEdit(item),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('소장 기록 편집'),
+                  ),
+                  TextButton.icon(
                     onPressed: () async {
                       final yes = await showDialog<bool>(
                         context: context,
@@ -1363,7 +1717,7 @@ class _StampDetail extends StatelessWidget {
                             (context) => AlertDialog(
                               title: const Text('수집 기록을 삭제할까요?'),
                               content: const Text(
-                                '수량, 메모와 사진 기록이 삭제됩니다. 도감의 우표 정보는 유지됩니다.',
+                                '수량과 메모 등 소장 기록이 삭제됩니다. 도감의 우표 정보는 유지됩니다.',
                               ),
                               actions: [
                                 TextButton(
@@ -1398,9 +1752,15 @@ class _StampDetail extends StatelessWidget {
                 ],
                 const SizedBox(height: 24),
                 FilledButton.icon(
-                  onPressed: onEdit,
+                  onPressed: () => onEdit(null),
                   icon: const Icon(Icons.add),
-                  label: Text(item == null ? '내 수집함에 추가' : '소장 기록 편집'),
+                  label: Text(
+                    !loggedIn
+                        ? '로그인하고 수집함에 추가'
+                        : item == null
+                        ? '내 수집함에 추가'
+                        : '다른 소장 형태 추가',
+                  ),
                 ),
                 const SizedBox(height: 24),
               ],

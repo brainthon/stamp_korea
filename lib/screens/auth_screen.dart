@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../services/collection_service.dart';
+import '../models/membership.dart';
+import '../services/membership_service.dart';
+import '../theme/app_theme.dart';
+import 'membership_policy_screen.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key, this.recovery = false});
+  const AuthScreen({
+    super.key,
+    this.recovery = false,
+    this.initialSignup = false,
+  });
   final bool recovery;
+  final bool initialSignup;
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
@@ -18,6 +27,16 @@ class _AuthScreenState extends State<AuthScreen> {
   bool signup = false, busy = false, hidden = true;
   String? message;
   bool failed = false;
+  Future<Membership>? membership;
+  @override
+  void initState() {
+    super.initState();
+    signup = widget.initialSignup;
+    if (SupabaseService.isLoggedIn && !widget.recovery) {
+      membership = MembershipService.fetch();
+    }
+  }
+
   @override
   void dispose() {
     email.dispose();
@@ -102,6 +121,8 @@ class _AuthScreenState extends State<AuthScreen> {
               ? '비밀번호 변경'
               : user != null
               ? '내 계정'
+              : signup
+              ? '회원가입'
               : '로그인',
         ),
       ),
@@ -137,9 +158,55 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 24),
               if (!configured)
-                const Text('Supabase 연결 설정이 필요합니다. 현재는 기기 내 수집 기능을 이용할 수 있어요.'),
+                const Text('로그인 연결을 준비 중입니다. 우표 도감은 가입 없이 둘러볼 수 있어요.'),
               if (user != null && !widget.recovery) ...[
-                const Text('게스트 수집함은 이 기기에 따로 보관됩니다. 찜 목록은 계정별로 이 기기에 저장됩니다.'),
+                FutureBuilder<Membership>(
+                  future: membership,
+                  builder:
+                      (context, snapshot) => Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppTheme.mint,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              snapshot.hasError
+                                  ? '회원등급을 확인하지 못했어요'
+                                  : !snapshot.hasData
+                                  ? '회원등급 확인 중…'
+                                  : snapshot.data!.isPremium
+                                  ? '프리미엄회원'
+                                  : '무료회원',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text('우표 도감 · 내 수집함 · 위시리스트 · 사진 판독'),
+                            if (snapshot.hasError)
+                              TextButton(
+                                onPressed:
+                                    () => setState(
+                                      () =>
+                                          membership =
+                                              MembershipService.fetch(),
+                                    ),
+                                child: const Text('등급 다시 확인'),
+                              ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '프리미엄 결제와 추가 혜택은 준비 중이에요.',
+                              style: TextStyle(color: AppTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '수집 기록과 위시리스트는 로그인한 계정에 저장됩니다. 수집함에는 공식 도감 이미지를 사용해요.',
+                ),
                 const SizedBox(height: 24),
                 OutlinedButton(
                   onPressed:
@@ -325,6 +392,16 @@ class _AuthScreenState extends State<AuthScreen> {
                     child: const Text('비밀번호를 잊으셨나요?'),
                   ),
               ],
+              if (!widget.recovery)
+                TextButton(
+                  onPressed:
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const MembershipPolicyScreen(),
+                        ),
+                      ),
+                  child: const Text('회원별 이용 범위 보기'),
+                ),
               if (busy)
                 const Padding(
                   padding: EdgeInsets.all(16),

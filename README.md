@@ -1,48 +1,61 @@
-# 우표모아 — Flutter MVP
+# 우표모아 — stamp_korea
 
-대한민국 우표를 발견하고 개인 수집 기록을 남기는 iOS/Android 공용 Flutter 앱입니다. 기존 `stamp_korea.zip` 프로젝트를 기반으로 첫 개발 버전을 정리했습니다.
+Flutter 기반 대한민국 우표 도감·사진 판독·개인 수집 앱입니다. iOS/Android 프로젝트와 같은 소스의 웹 관리자 화면을 포함하며 Supabase Auth/DB/Storage/Edge Functions를 사용합니다.
 
-## 지금 사용할 수 있는 기능
+**현재 기능, 검증 범위, 출시 전 작업과 교환 매칭 로드맵은 [PROJECT_STATUS.md](PROJECT_STATUS.md)를 기준으로 확인합니다.** 구현·배포가 사용자 흐름 검증 완료를 의미하지 않습니다.
 
-- 홈: 오늘의 우표, 테마 탐색, 실제 개인 수집 통계
-- 도감: 19종의 기존 샘플 데이터, 이름·연도·키워드 검색, 테마 필터, 발행순 정렬
-- 우표 상세: 발행정보, 이야기, 위시리스트
-- 개인 수집함: 추가·편집·삭제, 수량·상태·보관 위치·메모, 중복 필터
-- 카메라/앨범: 사진 선택 → 사용자가 도감에서 우표 선택 → 개인 사진과 기록 저장
-- 수집 기록 텍스트 복사
-- 휴대폰 하단 탐색 및 넓은 화면의 사이드바
-- 기기 내 저장. 서버 설정 없이 실행 가능
+비로그인·무료·프리미엄 이용 정책과 최신 화면 변경은 [MEMBERSHIP_POLICY.md](MEMBERSHIP_POLICY.md)를 참조합니다.
 
-## 디자인
+## 구현된 영역
 
-크림 `#FAFAF5`, 짙은 녹색 `#173E35`, 종이색 `#E9ECDD`. 불투명한 면, 얇은 구분선, 읽기 쉬운 한글 타이포그래피를 사용합니다. 글래스모피즘·배경 블러는 없습니다. Noto Sans KR의 400/700/800 굵기를 앱에 포함해 외부 폰트 요청 없이 표시합니다. 폰트 라이선스는 `assets/fonts/OFL.txt`에 있습니다.
+- 홈·오늘의 우표·최근 발행, 공식 이미지/설명 도감, 검색·테마 분류.
+- 이메일·Google·Kakao 인증 코드, 계정별 수집함, 여러 소장 상태, 공식 도감 이미지 기반 등록.
+- 사진 선택·품질 안내·자르기·제한적 영역 추출, Gemini 관찰 + DB 후보/시각 비교.
+- 명시적 사진 제공·학습 동의·철회, 관리자 검수와 승인 사진 비교 활용.
+- 관리자 도감 수정·이미지 업로드·재수집·이력, 회원관리·등급 구조, 운영 통계.
 
-## 명확한 한계
-
-- 사진 AI 판독 함수와 로그인 UI를 구현·배포했습니다. 실제 AI 판독과 소셜 로그인 활성화에는 제공자 키/설정이 필요합니다. **[설정 및 현재 상태](AUTH_AND_AI_SETUP.md)**를 확인하세요.
-- 기본 우표 이미지들은 기존 코드의 **예시 도안**이며, 정식 도감 사진이 아닙니다. 발행정보와 역사 설명도 공식 출처 대조 전 샘플입니다.
-- 샘플 우표를 실제 소유물로 자동 추가하지 않습니다. 처음 시작하면 수집함은 비어 있습니다.
-- 이메일/소셜 로그인 UI와 계정별 수집함 동기화를 구현했습니다. 관리자 웹, 이미지 검수, 구독·결제·거래는 후속 범위입니다.
-- Supabase stamp_app을 연결하고 실제 DB에서 회원별 RLS 접근 제한을 검증했습니다. 실행 시 config/development.json을 지정하면 연결됩니다.
-- 비로그인 개인 기록과 사진은 SharedPreferences에 저장됩니다. 로그인한 회원 기록과 사진은 Supabase에 저장합니다. 브라우저 데이터 삭제 시 없어질 수 있고, 대량 사진 저장에는 적합하지 않습니다. 출시 전 SQLite/파일 저장 및 계정별 동기화가 필요합니다.
-- 앱스토어 출시용 서명, 결제 정책, 실기기 카메라 테스트는 아직 완료하지 않았습니다.
+위시리스트는 아직 기기 저장입니다. 추가 모델 학습·판독 오류 관리·실제 결제·광고·교환/거래는 완료되지 않았습니다. 자세한 상태는 중앙 문서를 참조하세요.
 
 ## 실행
 
-이 환경의 Flutter 3.29.2 / Dart 3.7.2에서 분석·테스트·웹 빌드를 검증했습니다. 첨부 원본이 요구하던 더 높은 SDK 버전은 이 환경에서 실행 가능한 범위로 조정했으며, 실제로 해결된 의존성 버전은 `pubspec.lock`에 고정되어 있습니다.
+Flutter/Dart 의존성은 pubspec.lock을 사용합니다. 연결 설정 config/development.json은 Git에서 제외됩니다. Gemini 키·Supabase 서비스 역할 키를 앱 코드/공개 설정에 넣지 않습니다.
 
 ```sh
 flutter pub get
-flutter run -d chrome --web-port 8318 --dart-define-from-file=config/development.json
-flutter test
-flutter analyze
-flutter build web --pwa-strategy=none --no-web-resources-cdn --dart-define-from-file=config/development.json
+flutter run -d chrome --web-port 8320 --dart-define-from-file=config/development.json
 ```
 
-Android/iOS 기기 실행은 `flutter devices`로 기기를 확인한 후 `flutter run -d <device-id>`를 사용합니다. 카메라와 사진 접근 목적 문자열을 iOS에 추가했고 Android 인터넷 권한을 명시했습니다.
+이미 생성된 웹 파일은 프로젝트 폴더에서 아래 명령으로 실행합니다. 터미널 창을 열어두세요.
 
-## 이어서 개발하기
+```sh
+zsh start_admin.command
+```
 
-`DEVELOPMENT.md`에 기능별 완료 상태와 다음 구현 순서를 기록했습니다. `lib/screens/main_nav_screen.dart`가 현재 실행되는 화면입니다. `lib/models/stamp.dart`, `lib/services/stamp_repository.dart`, `lib/services/collection_service.dart`, `lib/widgets/stamp_visual_view.dart`는 원본 구조를 이어 사용합니다.
+- 사용자 앱: http://127.0.0.1:8320/
+- 관리자: http://127.0.0.1:8320/?admin=true
+- 통계: http://127.0.0.1:8320/?admin=true&section=stats&v=20261001-stats1
+- 관리자 URL만으로 권한이 생기지 않습니다. 서버가 실제 계정 권한을 확인합니다.
+- iPhone 시뮬레이터 갱신: scripts/update_simulator.command (Xcode/권한 필요).
 
-기존 하드코딩 API 키는 제거했습니다. 이미 배포했거나 공유한 원본에 들어 있던 Gemini 키는 제공자 콘솔에서 폐기/재발급해야 합니다. 새 Gemini 키를 앱 코드·dart-define·브라우저 저장소에 넣지 말고 서버 비밀값으로만 보관하세요.
+## 검사와 빌드
+
+```sh
+flutter analyze --no-pub
+flutter test
+node --experimental-strip-types --test supabase/functions/identify-stamp/hybrid.test.ts
+dart --packages=.dart_tool/package_config.json tool/verify_core.dart
+flutter build web --no-pub --pwa-strategy=none --no-web-resources-cdn --dart-define-from-file=config/development.json
+```
+
+소켓이 차단된 환경에서는 Flutter 화면 테스트를 실행할 수 없습니다. 순수 로직 검사로 화면 검사까지 완료했다고 판단하지 않습니다. 새 웹 빌드 후에는 브라우저 탭도 새로 로드해야 합니다.
+
+## 운영·설계 자료
+
+- [기능/진행/검증과 단계별 로드맵](PROJECT_STATUS.md)
+- [회원 등급 구조](supabase/MEMBERSHIPS.md)
+- [사진 제공·검수·추가 학습 범위](supabase/PHOTO_RECOGNITION.md)
+- [인증/AI 설정 가이드](AUTH_AND_AI_SETUP.md) — 대시보드 설정 별도 확인 필요
+- [메일 템플릿](supabase/templates/README.md)
+- [초기 인수인계 기록](DEVELOPMENT.md) — 과거 기록, 현재 상태의 기준 아님
+
+공식 이미지/원문은 사용자가 우표포털 담당자의 이용 허가를 받았다고 알려준 자료를 기반으로 수집했습니다. 권한 확인 자료와 출처 정보를 운영에서 보관합니다. 로컬 게스트 기록은 브라우저 데이터 삭제 시 사라질 수 있습니다. 현재 서비스는 출시 검증 진행 중입니다.

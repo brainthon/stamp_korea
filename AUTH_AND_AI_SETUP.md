@@ -1,6 +1,6 @@
 # 사진 판독 · 회원 계정 연결 안내
 
-2026-09-15 기준. 연결 프로젝트: stamp_app (dyrteyrpimesipypwdpo).
+연결 프로젝트: stamp_app (dyrteyrpimesipypwdpo). 이 문서는 설정 가이드이며 현재 구현·검증 상태는 [PROJECT_STATUS.md](PROJECT_STATUS.md)를 기준으로 확인합니다.
 
 ## 구현 및 배포한 내용
 
@@ -31,8 +31,8 @@ GEMINI_API_KEY를 추가합니다. [Google AI Studio](https://aistudio.google.co
 
 [Supabase Auth URL 설정](https://supabase.com/dashboard/project/dyrteyrpimesipypwdpo/auth/url-configuration):
 
-- 개발용 Site URL: http://127.0.0.1:8318/
-- Additional Redirect URLs: http://127.0.0.1:8318/
+- 현재 미리보기 Site URL 후보: http://127.0.0.1:8320/ (실제 대시보드 설정 확인 필요)
+- Additional Redirect URLs: http://127.0.0.1:8320/ (사용 중인 개발 주소를 정확히 등록)
 - Additional Redirect URLs: io.supabase.stampkorea://login-callback/
 - 실제 배포 시 HTTPS 앱 주소를 정확히 추가하고 Site URL도 배포 주소로 교체.
 - 휴대폰 브라우저에서 LAN 주소로 접속하면 그 주소도 별도로 등록해야 함.
@@ -65,7 +65,7 @@ Supabase 기본 메일 발송 제한이 있으므로 운영 전 전용 SMTP도 �
 
 ```sh
 flutter pub get
-flutter run -d chrome --web-port 8318 --dart-define-from-file=config/development.json
+flutter run -d chrome --web-port 8320 --dart-define-from-file=config/development.json
 flutter build web --pwa-strategy=none --no-web-resources-cdn --dart-define-from-file=config/development.json
 flutter test
 flutter analyze
@@ -81,7 +81,7 @@ Android/iOS는 같은 dart-define-from-file 옵션으로 실행합니다.
 - 비로그인 함수 호출은 401로 거부되는 것 확인.
 - 실제 이메일 수신/인증, Google/Kakao 로그인 완료, Gemini 응답 품질은 사용자 설정 후 확인 필요.
 - iOS/Android 실기기 OAuth 복귀·카메라 권한은 아직 검증하지 않음.
-- 도감 19종은 검증 전 샘플이고 이미지도 예시 도안. AI가 새 우표를 발견해도 공식 도감에 자동 등록하지 않음.
+- 현재 도감은 공식 수집 자료를 사용합니다. 최신 DB/번들 개수·설명 누락·외부 이미지 참조 상태는 PROJECT_STATUS.md를 확인하세요. AI 관찰 결과만으로 공식 도감에 자동 등록하지 않습니다.
 - 현재 자동 도감 후보 순위 검색/벡터 검색은 없음. AI 관찰을 보고 사용자가 기존 도감에서 선택.
 - 게스트 수집함 자동 가져오기, 회원 탈퇴, 관리자 검수, 결제는 후속 범위.
 - 새 사진은 비공개 저장소에 보관. 기존 공개 stamp-images도 비공개로 전환. 오래된 공개 URL이 있다면 운영자 확인 후 경로 이관 필요.

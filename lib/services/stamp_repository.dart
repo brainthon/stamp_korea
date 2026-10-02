@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/official_stamp.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/stamp.dart';
+import '../models/stamp_theme.dart';
 import 'supabase_service.dart';
 
 class StampRepository {
@@ -628,6 +629,28 @@ class StampRepository {
     }
   }
 
+  /// 한국 날짜 기준 이미 발행된 공식 우표를 최신 발행일순으로 표시합니다.
+  static List<Stamp> getLatestIssuedStamps({
+    DateTime? date,
+    List<Stamp>? stamps,
+    int limit = 4,
+  }) {
+    final now = date ?? DateTime.now().toUtc().add(const Duration(hours: 9));
+    final today = DateTime(now.year, now.month, now.day);
+    final issued =
+        (stamps ?? getAllStamps()).where((stamp) {
+            final day = DateTime.tryParse(stamp.issueDate);
+            return stamp.id.startsWith('epost_') &&
+                day != null &&
+                !day.isAfter(today);
+          }).toList()
+          ..sort((a, b) {
+            final order = b.issueDate.compareTo(a.issueDate);
+            return order != 0 ? order : a.id.compareTo(b.id);
+          });
+    return issued.take(limit).toList();
+  }
+
   /// 오늘의 역사 우표 자동 선정
   static Stamp getTodayStamp({DateTime? date, List<Stamp>? stamps}) {
     final now = date ?? DateTime.now();
@@ -689,6 +712,12 @@ class StampRepository {
     }
   }
 
+  static int? searchYear(String query) {
+    final match = RegExp(r'^(\d{4})\s*년?$').firstMatch(query.trim());
+    final year = match == null ? null : int.tryParse(match.group(1)!);
+    return year != null && year >= 1800 && year <= 2199 ? year : null;
+  }
+
   static List<Stamp> searchStamps({
     String? query,
     String? era,
@@ -697,8 +726,10 @@ class StampRepository {
     int? startYear,
     int? endYear,
   }) {
+    final yearQuery = searchYear(query ?? '');
     return getAllStamps().where((stamp) {
-      if (query != null && query.trim().isNotEmpty) {
+      if (yearQuery != null && stamp.issueYear != yearQuery) return false;
+      if (yearQuery == null && query != null && query.trim().isNotEmpty) {
         final q = query.trim().toLowerCase();
         final matchName = stamp.name.toLowerCase().contains(q);
         final matchEng = stamp.englishName.toLowerCase().contains(q);
@@ -751,10 +782,7 @@ class StampRepository {
   }
 
   static List<String> getAllThemes() {
-    final themes = <String>{'전체'};
-    for (final s in getAllStamps()) {
-      themes.add(s.theme);
-    }
-    return themes.toList();
+    final available = getAllStamps().map((s) => s.theme).toSet();
+    return ['전체', ...StampTheme.names.where(available.contains)];
   }
 }

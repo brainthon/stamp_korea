@@ -1,3 +1,4 @@
+import 'screens/admin_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'services/supabase_service.dart';
@@ -45,7 +46,10 @@ class _StampKoreaAppState extends State<StampKoreaApp> {
       themeMode: ThemeMode.light,
       home: SplashScreen(
         initialization: initialization,
-        child: const MainNavScreen(),
+        child:
+            Uri.base.queryParameters['admin'] == 'true'
+                ? const AdminScreen()
+                : const MainNavScreen(),
       ),
     );
   }
