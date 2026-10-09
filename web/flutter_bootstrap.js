@@ -15,7 +15,7 @@
       }
     }
   }
-  const version = new URLSearchParams(location.search).get('v') || '20261002-notice-title1';
+  const version = new URLSearchParams(location.search).get('v') || '20261009-yellow-splash3';
   for (const build of _flutter.buildConfig.builds) {
     if (build.mainJsPath) build.mainJsPath += '?v=' + encodeURIComponent(version);
   }

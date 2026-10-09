@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp" android:height="288dp"
+    android:viewportWidth="288" android:viewportHeight="288">
+    <!-- All artwork fits inside the platform's central 192dp safe circle. -->
+    <path android:fillColor="#FFFCED" android:pathData="M84,70 L204,70 L204,218 L84,218 Z"/>
+    <path android:fillColor="#F9DF85" android:pathData="M95,82 L193,82 L193,206 L95,206 Z"/>
+    <path android:fillColor="#EBA33A" android:pathData="M144,105 C128,84 114,108 130,124 C102,120 103,148 130,145 C115,166 141,177 145,151 C159,174 178,157 158,141 C184,149 189,121 159,124 C177,107 157,88 144,105 Z"/>
+    <path android:fillColor="#45351D" android:pathData="M144,117 A15,15 0,1 0,144,147 A15,15 0,1 0,144,117"/>
+    <path android:strokeColor="#62734B" android:strokeWidth="3" android:fillColor="#00000000" android:pathData="M144,147 Q138,171 151,190"/>
+    <path android:fillColor="#62734B" android:pathData="M145,170 Q163,157 170,168 Q160,180 145,170 Z"/>
+</vector>

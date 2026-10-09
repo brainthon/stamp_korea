@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
+  static const brandYellow = Color(0xFFF2BE32);
+  static const brandInk = Color(0xFF45351D);
   static const primaryBlack = Color(0xFF2463B5);
   static const accentCrimson = Color(0xFFD85A46);
   static const accentGold = Color(0xFFE6AF48);

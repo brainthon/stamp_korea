@@ -28,8 +28,12 @@ begin
  end loop;
  if public.reserve_stamp_scan(a) then raise exception 'Quota limit failed'; end if;
  execute 'set local role anon';
- select count(*) into seen from public.user_collections;
- if seen != 0 then raise exception 'Guest can read collections'; end if;
+ begin
+  select count(*) into seen from public.user_collections;
+  if seen != 0 then raise exception 'Guest can read collections'; end if;
+ exception when insufficient_privilege then
+  null; -- Denial at table privilege level is also valid guest isolation.
+ end;
  execute 'reset role';
 end $$;
 rollback;

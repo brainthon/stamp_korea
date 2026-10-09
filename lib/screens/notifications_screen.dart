@@ -16,7 +16,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String category = '전체';
   String? error;
   bool loading = false, more = true;
-  int generation = 0;
+  int generation = 0, nextOffset = 0;
+  final Set<String> deleting = {};
   bool get ownsPage =>
       owner != null && SupabaseService.currentUser?.id == owner;
   @override
@@ -26,7 +27,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> load({bool reset = true}) async {
-    if (!ownsPage || (!reset && loading)) return;
+    if (!ownsPage || deleting.isNotEmpty || (!reset && loading)) return;
     final ticket = ++generation;
     setState(() {
       loading = true;
@@ -34,13 +35,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (reset) items = [];
     });
     try {
-      final rows = await NotificationService.fetch(
+      final page = await NotificationService.fetch(
         owner!,
         category,
-        reset ? 0 : items.length,
+        reset ? 0 : nextOffset,
       );
       if (!mounted || ticket != generation || !ownsPage) return;
+      final rows = page.items;
       setState(() {
+        nextOffset = page.nextOffset;
         items =
             reset
                 ? rows
@@ -48,7 +51,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ...items,
                   ...rows.where((row) => !items.any((old) => old.id == row.id)),
                 ];
-        more = rows.length == 25;
+        more = page.hasMore;
       });
     } catch (_) {
       if (mounted && ticket == generation && ownsPage) {
@@ -56,6 +59,45 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
     } finally {
       if (mounted && ticket == generation) setState(() => loading = false);
+    }
+  }
+
+  Future<void> remove(MemberNotification item) async {
+    if (!ownsPage || loading || deleting.contains(item.id)) return;
+    setState(() => deleting.add(item.id));
+    try {
+      await NotificationService.hide(owner!, item.id);
+      if (!mounted || !ownsPage) return;
+      setState(() => items.removeWhere((r) => r.id == item.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('이 기기의 알림 목록에서 삭제했어요.'),
+          action: SnackBarAction(
+            label: '실행 취소',
+            onPressed: () async {
+              if (!ownsPage) return;
+              try {
+                await NotificationService.hide(owner!, item.id, hidden: false);
+                if (mounted && ownsPage) await load();
+              } catch (_) {
+                if (mounted && ownsPage) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('알림을 복원하지 못했어요. 다시 시도해 주세요.')),
+                  );
+                }
+              }
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted && ownsPage) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('삭제하지 못했어요. 다시 시도해 주세요.')));
+      }
+    } finally {
+      if (mounted) setState(() => deleting.remove(item.id));
     }
   }
 
@@ -164,6 +206,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     ),
                                     selected: category == value,
                                     onSelected: (_) {
+                                      if (deleting.isNotEmpty) return;
                                       setState(() => category = value);
                                       load();
                                     },
@@ -193,7 +236,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 ),
                                 SizedBox(height: 16),
                                 Text(
-                                  '아직 도착한 알림이 없어요.',
+                                  '표시할 알림이 없어요.',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
@@ -276,6 +319,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           ],
                                         ),
                                       ),
+                                      IconButton(
+                                        tooltip: '이 기기에서 알림 삭제',
+                                        icon: const Icon(Icons.delete_outline),
+                                        onPressed:
+                                            loading ||
+                                                    deleting.contains(item.id)
+                                                ? null
+                                                : () => remove(item),
+                                      ),
                                       if (!item.read)
                                         const Padding(
                                           padding: EdgeInsets.only(
@@ -308,10 +360,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             child: const Text('다시 시도'),
                           ),
                         ],
-                        if (!loading &&
-                            error == null &&
-                            more &&
-                            items.isNotEmpty)
+                        if (!loading && error == null && more)
                           TextButton(
                             onPressed: () => load(reset: false),
                             child: const Text('알림 더 보기'),

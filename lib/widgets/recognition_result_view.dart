@@ -17,12 +17,14 @@ class RecognitionResultView extends StatefulWidget {
     this.collected = false,
     this.onSelectCandidate,
     this.onContribute,
+    this.onFeedback,
   });
   final Recognition result;
   final Uint8List? photo;
   final VoidCallback onBack, onChoose, onSave;
   final bool collected;
   final VoidCallback? onContribute;
+  final VoidCallback? onFeedback;
   final ValueChanged<OfficialStamp>? onSelectCandidate;
   @override
   State<RecognitionResultView> createState() => _RecognitionResultViewState();
@@ -65,11 +67,17 @@ class _RecognitionResultViewState extends State<RecognitionResultView> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       children: [
+        if (widget.onFeedback != null)
+          TextButton.icon(
+            onPressed: widget.onFeedback,
+            icon: const Icon(Icons.fact_check_outlined),
+            label: const Text('판독 결과 확인 · 오류 신고'),
+          ),
         if (widget.onContribute != null)
           TextButton.icon(
             onPressed: widget.onContribute,
             icon: const Icon(Icons.volunteer_activism_outlined),
-            label: const Text('정답 확인 · 판독 개선 사진 제공'),
+            label: const Text('판독 개선 사진 제공'),
           ),
         Row(
           children: [

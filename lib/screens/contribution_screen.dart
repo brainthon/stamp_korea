@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 import '../services/contribution_service.dart';
 
 class ContributionScreen extends StatefulWidget {
-  const ContributionScreen({super.key, this.photo, this.stampId});
+  const ContributionScreen({
+    super.key,
+    this.photo,
+    this.stampId,
+    this.recognitionId,
+  });
   final Uint8List? photo;
   final String? stampId;
+  final String? recognitionId;
   @override
   State<ContributionScreen> createState() => _ContributionScreenState();
 }
@@ -190,6 +196,7 @@ class _ContributionScreenState extends State<ContributionScreen> {
                         widget.photo!,
                         selected!,
                         training,
+                        recognitionId: widget.recognitionId,
                       );
                       if (mounted) {
                         setState(() {

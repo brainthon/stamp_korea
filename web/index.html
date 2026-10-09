@@ -24,7 +24,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="우표모아">
-  <meta name="theme-color" content="#FCF9F3">
+  <meta name="theme-color" content="#F2BE32">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
@@ -35,15 +35,13 @@
 </head>
 <body>
   <style>
-    body { margin: 0; background: #FCF9F3; }
+    body { margin: 0; background: #F2BE32; }
     #launch { position: fixed; inset: 0; display: grid; place-content: center;
-      text-align: center; color: #263D39; font-family: sans-serif; }
-    #launch img { width: 128px; height: 128px; border-radius: 32px; margin: auto; }
-    #launch h1 { font-size: 30px; margin: 24px 0 10px; }
-    #launch p { font-size: 14px; color: #687C77; margin: 0; }
+      text-align: center; color: #45351D; font-family: sans-serif; }
+    #launch h1, #launch p { position: absolute; width: 1px; height: 1px;
+      overflow: hidden; clip-path: inset(50%); }
   </style>
   <div id="launch" role="status" aria-label="우표모아 시작 중">
-    <img src="icons/Icon-192.png" alt="">
     <h1>우표모아</h1><p>좋아하는 우표를, 하나씩</p>
   </div>
   <script>
@@ -57,6 +55,7 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js?v=20261002-notice-title1" async></script>
+  <script src="heic/bridge.js?v=20261009-yellow-splash3"></script>
+  <script src="flutter_bootstrap.js?v=20261009-yellow-splash3" async></script>
 </body>
 </html>

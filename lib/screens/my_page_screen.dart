@@ -1,3 +1,4 @@
+import 'login_accounts_screen.dart';
 import 'delete_account_screen.dart';
 import '../widgets/notification_bell.dart';
 import 'notifications_screen.dart';
@@ -44,6 +45,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
   void initState() {
     super.initState();
     ownerId = SupabaseService.currentUser?.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ownsPage) {
+        unawaited(CollectionService.refreshWishlist());
+      }
+    });
     auth = SupabaseService.authStateChanges?.listen((_) {
       if (mounted) {
         setState(() {});
@@ -357,6 +363,16 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       child: const Text('다시 불러오기'),
                     ),
                   ],
+                  if (CollectionService.wishlistRefreshing)
+                    const LinearProgressIndicator(),
+                  if (CollectionService.wishlistSyncError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(CollectionService.wishlistSyncError!),
+                    TextButton(
+                      onPressed: CollectionService.refreshWishlist,
+                      child: const Text('위시리스트 다시 불러오기'),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   const Text(
                     '종수 기준으로 표시해요. 수집 기록과 위시리스트는 계정에 저장됩니다.',
@@ -462,6 +478,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => const NotificationsScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _menu(
+                    Icons.link,
+                    '로그인 계정 관리',
+                    '카카오 · Google을 같은 회원에 연결',
+                    () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LoginAccountsScreen(),
                       ),
                     ),
                   ),

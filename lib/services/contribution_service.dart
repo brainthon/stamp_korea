@@ -1,3 +1,4 @@
+import 'account_settings_service.dart';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -28,11 +29,13 @@ class ContributionService {
   static Future<void> submit(
     Uint8List photo,
     String stampId,
-    bool training,
-  ) async {
+    bool training, {
+    String? recognitionId,
+  }) async {
     final user = client.auth.currentUser;
     if (user == null) throw StateError('로그인이 필요해요.');
     final bytes = await compute(prepareContribution, photo);
+    AccountSettingsService.checkOwner(user.id);
     final random = Random.secure();
     final hex = List.generate(32, (_) => random.nextInt(16).toRadixString(16));
     hex[12] = '4';
@@ -49,7 +52,9 @@ class ContributionService {
           fileOptions: const FileOptions(contentType: 'image/jpeg'),
         );
     try {
+      AccountSettingsService.checkOwner(user.id);
       await client.from('photo_contributions').insert({
+        'recognition_run_id': recognitionId,
         'id': id,
         'user_id': user.id,
         'stamp_id': stampId,
@@ -59,7 +64,9 @@ class ContributionService {
         'consent_version': '2026-09-30-v1',
       });
     } catch (_) {
-      await client.storage.from(bucket).remove([path]);
+      try {
+        await client.storage.from(bucket).remove([path]);
+      } catch (_) {}
       rethrow;
     }
   }

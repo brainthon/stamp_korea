@@ -1,3 +1,4 @@
+import 'admin_recognition.dart';
 import 'admin_announcements.dart';
 import 'admin_catalog.dart';
 import 'admin_members.dart';
@@ -42,6 +43,7 @@ class _AdminScreenState extends State<AdminScreen> {
   @override
   void initState() {
     super.initState();
+    if (Uri.base.queryParameters['section'] == 'errors') selected = 3;
     if (Uri.base.queryParameters['section'] == 'stats') selected = 5;
     if (Uri.base.queryParameters['section'] == 'announcements') selected = 6;
     load();
@@ -491,6 +493,8 @@ class _AdminScreenState extends State<AdminScreen> {
                                         ? dashboard(constraints.maxWidth)
                                         : selected == 1
                                         ? const AdminCatalog()
+                                        : selected == 3
+                                        ? const AdminRecognition()
                                         : selected == 4
                                         ? const AdminMembers()
                                         : selected == 5

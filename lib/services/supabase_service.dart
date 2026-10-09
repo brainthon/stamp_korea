@@ -1,3 +1,4 @@
+import 'auth_flow.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -43,10 +44,15 @@ class SupabaseService {
     'SUPABASE_PUBLISHABLE_KEY',
   );
 
-  static String get redirectUrl =>
-      kIsWeb
-          ? '${Uri.base.origin}/'
-          : 'io.supabase.stampkorea://login-callback/';
+  static String get redirectUrl => authRedirectUrl(web: kIsWeb, base: Uri.base);
+  static String? pendingAuthError;
+  static String describeAuthError(Object error) =>
+      authFailureMessage(error is AuthException ? error.code : null);
+  static String? takeAuthError() {
+    final message = pendingAuthError;
+    pendingAuthError = null;
+    return message;
+  }
 
   static bool _isInitialized = false;
   static bool recoveryPending = false;
@@ -55,15 +61,25 @@ class SupabaseService {
   /// Supabase 클라이언트 초기화
   static Future<bool> initialize() async {
     if (_isInitialized) return true;
+    pendingAuthError = kIsWeb ? authCallbackFailure(Uri.base) : null;
     try {
       const url = defaultUrl;
       const key = defaultKey;
 
       if (url.isNotEmpty && key.isNotEmpty) {
-        await Supabase.initialize(url: url.trim(), publishableKey: key.trim());
+        await Supabase.initialize(
+          url: url.trim(),
+          publishableKey: key.trim(),
+          authOptions: const FlutterAuthClientOptions(
+            authFlowType: AuthFlowType.pkce,
+          ),
+        );
         _isInitialized = true;
         Supabase.instance.client.auth.onAuthStateChange.listen(
           (state) {
+            if (state.event == AuthChangeEvent.signedIn) {
+              pendingAuthError = null;
+            }
             if (state.event == AuthChangeEvent.passwordRecovery) {
               recoveryPending = true;
             }
@@ -71,7 +87,8 @@ class SupabaseService {
               recoveryPending = false;
             }
           },
-          onError: (_) {
+          onError: (Object error) {
+            pendingAuthError = describeAuthError(error);
             recoveryPending = false;
           },
         );
@@ -194,6 +211,9 @@ class SupabaseService {
     return await sb.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: redirectUrl,
+      authScreenLaunchMode:
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+      queryParams: const {'prompt': 'select_account'},
     );
   }
 
@@ -206,24 +226,99 @@ class SupabaseService {
     return await sb.auth.signInWithOAuth(
       OAuthProvider.kakao,
       redirectTo: redirectUrl,
+      authScreenLaunchMode:
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
     );
   }
 
-  /// 이메일 회원가입
-  static Future<void> _requireProvider(String provider) async {
+  /// 기존 회원 ID에 인증 수단을 연결한다. 일반 로그인과 구분한다.
+  static Future<bool> linkLoginIdentity(OAuthProvider provider) async {
+    if (provider != OAuthProvider.kakao && provider != OAuthProvider.google) {
+      throw const AuthException(
+        'Unsupported identity',
+        code: 'validation_failed',
+      );
+    }
+    final sb = client;
+    final owner = currentUser?.id;
+    if (sb == null || owner == null) {
+      throw const AuthException('Sign in required', code: 'session_not_found');
+    }
+    await _requireProvider(provider.name);
+    if (currentUser?.id != owner) {
+      throw const AuthException('Account changed', code: 'session_not_found');
+    }
+    return sb.auth.linkIdentity(
+      provider,
+      redirectTo: redirectUrl,
+      authScreenLaunchMode:
+          kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+      queryParams:
+          provider == OAuthProvider.google
+              ? const {'prompt': 'select_account'}
+              : const {'prompt': 'login'},
+    );
+  }
+
+  static Future<Map<String, bool>> loginProviders() async {
     final response = await http
         .get(
-          Uri.parse('$defaultUrl/auth/v1/settings'),
-          headers: {'apikey': defaultKey},
+          Uri.parse('${defaultUrl.trim()}/auth/v1/settings'),
+          headers: {'apikey': defaultKey.trim()},
         )
         .timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {
       throw StateError('Auth settings unavailable');
     }
     final settings = jsonDecode(response.body) as Map<String, dynamic>;
-    if ((settings['external'] as Map)[provider] != true) {
-      throw AuthException('로그인 제공자가 아직 연결되지 않았습니다.', code: 'provider_disabled');
+    return {
+      for (final provider in ['kakao', 'google'])
+        provider: authProviderEnabled(settings, provider),
+    };
+  }
+
+  /// 이메일 회원가입
+  static Future<void> _requireProvider(String provider) async {
+    final response = await http
+        .get(
+          Uri.parse('${defaultUrl.trim()}/auth/v1/settings'),
+          headers: {'apikey': defaultKey.trim()},
+        )
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      throw const AuthException(
+        'Auth settings unavailable',
+        code: 'auth_settings_unavailable',
+      );
     }
+    bool enabled;
+    try {
+      enabled = authProviderEnabled(
+        jsonDecode(response.body) as Map<String, dynamic>,
+        provider,
+      );
+    } catch (_) {
+      throw const AuthException(
+        'Auth settings unavailable',
+        code: 'auth_settings_unavailable',
+      );
+    }
+    if (!enabled) {
+      throw AuthException(
+        'Provider not configured',
+        code: 'provider_disabled_$provider',
+      );
+    }
+  }
+
+  static Future<void> resendConfirmation(String email) async {
+    final sb = client;
+    if (sb == null) throw StateError('Auth not configured');
+    await sb.auth.resend(
+      type: OtpType.signup,
+      email: email.trim(),
+      emailRedirectTo: redirectUrl,
+    );
   }
 
   static Future<AuthResponse> signUpWithEmail({
@@ -264,7 +359,7 @@ class SupabaseService {
   static Future<void> signOut() async {
     final sb = client;
     if (sb != null) {
-      await sb.auth.signOut();
+      await sb.auth.signOut(scope: SignOutScope.local);
     }
   }
 
@@ -310,7 +405,12 @@ class SupabaseService {
       return UserProfile(
         id: user.id,
         email: user.email ?? '',
-        nickname: user.userMetadata?['nickname']?.toString() ?? '우표 수집가',
+        nickname:
+            user.userMetadata?['nickname']?.toString() ??
+            user.userMetadata?['name']?.toString() ??
+            user.userMetadata?['full_name']?.toString() ??
+            '우표 수집가',
+        avatarUrl: user.userMetadata?['avatar_url']?.toString(),
         createdAt: DateTime.now(),
       );
     }

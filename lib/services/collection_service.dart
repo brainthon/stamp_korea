@@ -1,4 +1,5 @@
 import 'wishlist_service.dart';
+import 'wishlist_sync.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,22 @@ class CollectionService {
   static int _generation = 0;
   static bool loading = false;
   static String? syncError;
+  static String? wishlistSyncError;
+  static DateTime? wishlistSyncedAt;
+  static final WishlistSync _wishlistSync = WishlistSync(
+    currentOwner:
+        () => _owner == SupabaseService.currentUser?.id ? _owner : null,
+    fetch: WishlistService.fetch,
+    apply: (ids) {
+      _wishlistIds = ids;
+      wishlistSyncError = null;
+      wishlistSyncedAt = DateTime.now();
+    },
+    onError: () {
+      wishlistSyncError = '위시리스트를 갱신하지 못했어요. 연결을 확인하고 다시 시도해 주세요.';
+    },
+  );
+  static bool get wishlistRefreshing => _wishlistSync.refreshing;
   static final ValueNotifier<int> notifier = ValueNotifier<int>(0);
   static String get _collectionKey =>
       _owner == null
@@ -46,6 +63,9 @@ class CollectionService {
 
   static Future<void> reloadForAccount() async {
     final generation = ++_generation;
+    _wishlistSync.invalidate();
+    wishlistSyncError = null;
+    wishlistSyncedAt = null;
     _owner = SupabaseService.currentUser?.id;
     _items = [];
     _wishlistIds = {};
@@ -64,6 +84,7 @@ class CollectionService {
         if (generation != _generation) return;
         _wishlistIds = await WishlistService.fetch(owner);
         if (generation != _generation) return;
+        wishlistSyncedAt = DateTime.now();
         // Remove the legacy local copy after successful migration. Cloud is authoritative.
         await prefs.remove(wishKey);
         if (generation != _generation) return;
@@ -177,17 +198,34 @@ class CollectionService {
 
   static int get wishlistCount => _wishlistIds.length;
 
+  /// Fetch only wishlist IDs; leave collection records and previous IDs intact.
+  static Future<void> refreshWishlist() async {
+    if (loading ||
+        _owner == null ||
+        _owner != SupabaseService.currentUser?.id) {
+      return;
+    }
+    final generation = _generation;
+    final request = _wishlistSync.refresh();
+    notifier.value++;
+    await request;
+    if (generation == _generation) notifier.value++;
+  }
+
   static bool isWishlisted(String id) => _wishlistIds.contains(id);
   static Future<void> toggleWishlist(String id) async {
     final generation = _generation;
     _check(generation);
     if (_wishlistBusy.contains(id)) return;
     _wishlistBusy.add(id);
+    final write = _wishlistSync.beginWrite();
     final wanted = !_wishlistIds.contains(id);
     try {
       if (_owner != null) {
         await WishlistService.set(_owner!, id, wanted);
         _check(generation);
+        wishlistSyncError = null;
+        wishlistSyncedAt = DateTime.now();
       }
       if (wanted) {
         _wishlistIds.add(id);
@@ -202,6 +240,7 @@ class CollectionService {
       }
       notifier.value++;
     } finally {
+      _wishlistSync.endWrite(write);
       if (generation == _generation) _wishlistBusy.remove(id);
     }
   }

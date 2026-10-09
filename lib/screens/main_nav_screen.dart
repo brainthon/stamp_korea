@@ -1,3 +1,5 @@
+import '../services/photo_import_service.dart';
+import 'recognition_feedback_screen.dart';
 import '../widgets/notification_bell.dart';
 import 'contribution_screen.dart';
 import 'photo_crop_screen.dart';
@@ -31,7 +33,8 @@ class MainNavScreen extends StatefulWidget {
   State<MainNavScreen> createState() => _MainNavScreenState();
 }
 
-class _MainNavScreenState extends State<MainNavScreen> {
+class _MainNavScreenState extends State<MainNavScreen>
+    with WidgetsBindingObserver {
   int tab = 0;
   int catalogLimit = 24;
   String query = '', theme = '전체', collectionFilter = '전체';
@@ -53,6 +56,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(
       StampRepository.syncWithCloud().then((_) {
         if (mounted) refresh();
@@ -91,35 +95,41 @@ class _MainNavScreenState extends State<MainNavScreen> {
         if (state.event == AuthChangeEvent.passwordRecovery) openRecovery();
       },
       onError: (_) {
-        if (mounted) notify('로그인 연결을 확인해 주세요.');
+        if (mounted) {
+          notify(SupabaseService.takeAuthError() ?? '로그인 연결을 확인해 주세요.');
+        }
       },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authError = SupabaseService.takeAuthError();
+      if (authError != null && mounted) notify(authError);
       if (SupabaseService.recoveryPending) openRecovery();
     });
   }
 
-  void openAccount({bool signup = false}) => Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder:
-          (_) =>
-              SupabaseService.isLoggedIn
-                  ? MyPageScreen(
-                    onCollection: (filter) {
-                      if (mounted) {
-                        setState(() {
-                          tab = 3;
-                          collectionFilter = filter;
-                        });
-                      }
-                    },
-                    onStamp: (stamp) {
-                      if (mounted) unawaited(detail(stamp));
-                    },
-                  )
-                  : AuthScreen(initialSignup: signup),
-    ),
-  );
+  Future<void> openAccount({bool signup = false}) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder:
+              (_) =>
+                  SupabaseService.isLoggedIn
+                      ? MyPageScreen(
+                        onCollection: (filter) {
+                          if (mounted) {
+                            setState(() {
+                              tab = 3;
+                              collectionFilter = filter;
+                            });
+                            unawaited(CollectionService.refreshWishlist());
+                          }
+                        },
+                        onStamp: (stamp) {
+                          if (mounted) unawaited(detail(stamp));
+                        },
+                      )
+                      : AuthScreen(initialSignup: signup),
+        ),
+      );
 
   Widget accountButton() => Row(
     mainAxisSize: MainAxisSize.min,
@@ -152,11 +162,14 @@ class _MainNavScreenState extends State<MainNavScreen> {
   );
 
   Future<void> toggleWishlist(String stampId) async {
-    if (!SupabaseService.isLoggedIn) {
-      openAccount();
-      return;
-    }
     try {
+      if (!SupabaseService.isLoggedIn) {
+        await openAccount();
+        if (!mounted || !SupabaseService.isLoggedIn) return;
+        final owner = SupabaseService.currentUser!.id;
+        await CollectionService.reloadForAccount();
+        if (!mounted || SupabaseService.currentUser?.id != owner) return;
+      }
       await CollectionService.toggleWishlist(stampId);
     } catch (_) {
       if (mounted) notify('위시리스트를 저장하지 못했어요. 새로고침 후 다시 시도해 주세요.');
@@ -178,6 +191,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     dateTimer?.cancel();
     CollectionService.notifier.removeListener(refresh);
     authSubscription?.cancel();
@@ -187,6 +201,16 @@ class _MainNavScreenState extends State<MainNavScreen> {
 
   void navigate(int index) {
     setState(() => tab = index);
+    if (index == 0 || index == 3) {
+      unawaited(CollectionService.refreshWishlist());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(CollectionService.refreshWishlist());
+    }
   }
 
   void notify(String text) =>
@@ -329,11 +353,21 @@ class _MainNavScreenState extends State<MainNavScreen> {
   ];
   static const _labels = ['홈', '우표 도감', '사진 판독', '내 수집함'];
 
-  Widget page(List<Widget> children) => ListView(
-    key: ValueKey(tab),
-    padding: const EdgeInsets.fromLTRB(24, 24, 24, 116),
-    children: children,
-  );
+  Widget page(List<Widget> children) {
+    final content = ListView(
+      key: ValueKey(tab),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 116),
+      children: children,
+    );
+    return tab == 3 && SupabaseService.isLoggedIn
+        ? RefreshIndicator(
+          onRefresh: CollectionService.reloadForAccount,
+          child: content,
+        )
+        : content;
+  }
+
   Widget heading(String eyebrow, String title, {Widget? trailing}) => Padding(
     padding: const EdgeInsets.only(bottom: 24),
     child: Row(
@@ -886,7 +920,12 @@ class _MainNavScreenState extends State<MainNavScreen> {
                   (t) => ChoiceChip(
                     label: Text(t),
                     selected: collectionFilter == t,
-                    onSelected: (_) => setState(() => collectionFilter = t),
+                    onSelected: (_) {
+                      setState(() => collectionFilter = t);
+                      if (t == '위시리스트') {
+                        unawaited(CollectionService.refreshWishlist());
+                      }
+                    },
                   ),
                 )
                 .toList(),
@@ -920,8 +959,19 @@ class _MainNavScreenState extends State<MainNavScreen> {
           child: const Text('다시 불러오기'),
         ),
       ],
+      if (CollectionService.wishlistRefreshing) const LinearProgressIndicator(),
+      if (CollectionService.wishlistSyncError != null)
+        Text(CollectionService.wishlistSyncError!),
+      TextButton.icon(
+        onPressed:
+            CollectionService.wishlistRefreshing || CollectionService.loading
+                ? null
+                : CollectionService.refreshWishlist,
+        icon: const Icon(Icons.cloud_sync_outlined),
+        label: const Text('위시리스트 동기화'),
+      ),
       Text(
-        '수집 기록은 계정에 저장되고 공식 도감 이미지로 표시됩니다. 위시리스트는 현재 이 기기에 저장됩니다.',
+        '수집 기록과 위시리스트는 로그인한 계정에 저장됩니다. 다른 기기에서는 화면을 다시 열거나 아래로 당겨 최신 기록을 불러오세요.',
         style: const TextStyle(color: _muted, fontSize: 13),
       ),
       TextButton(
@@ -940,12 +990,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
         maxWidth: 1600,
         maxHeight: 1600,
         imageQuality: 90,
+        requestFullMetadata: false,
       );
       if (file != null) {
-        final bytes = await compute(
-          normalizeStampPhoto,
-          await file.readAsBytes(),
-        );
+        final bytes = await importStampPhoto(await file.readAsBytes());
         final warnings = await compute(inspectStampPhoto, bytes);
         if (mounted) {
           setState(() {
@@ -1091,6 +1139,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
             (_) => ContributionScreen(
               photo: submit ? photo : null,
               stampId: recognition?.official?.id,
+              recognitionId: recognition?.recognitionId,
             ),
       ),
     );
@@ -1128,6 +1177,15 @@ class _MainNavScreenState extends State<MainNavScreen> {
         onBack: () => setState(() => recognition = null),
         onChoose: manualMatch,
         onSave: saveRecognized,
+        onFeedback:
+            recognition!.recognitionId == null
+                ? null
+                : () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (_) => RecognitionFeedbackScreen(result: recognition!),
+                  ),
+                ),
         onContribute: () => openContributions(submit: true),
         onSelectCandidate:
             (stamp) => setState(() => recognition = recognition!.choose(stamp)),
@@ -1339,8 +1397,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
 
   Future<void> edit(Stamp stamp, {CollectionItem? existing}) async {
     if (!SupabaseService.isLoggedIn) {
-      openAccount();
-      return;
+      await openAccount();
+      if (!mounted || !SupabaseService.isLoggedIn) return;
     }
     final memo = TextEditingController(text: existing?.memo ?? '');
     final place = TextEditingController(text: existing?.storageLocation ?? '');

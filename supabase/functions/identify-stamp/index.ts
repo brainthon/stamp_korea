@@ -1,3 +1,4 @@
+import { auditRecord } from "./audit.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 import { decideMatch, validReference, type Official, type Comparison } from "./hybrid.ts";
 const headers = {
@@ -6,8 +7,8 @@ const headers = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json",
 };
-const reply = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers });
-const fail = (status: number, code: string, message: string) => reply(status, { code, message });
+const plainReply = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers });
+const plainFail = (status: number, code: string, message: string) => plainReply(status, { code, message });
 const schema = {
   type: "OBJECT", properties: {
     is_stamp: { type: "BOOLEAN" },
@@ -22,7 +23,26 @@ const schema = {
 };
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers });
-  if (req.method !== "POST") return fail(405,"METHOD","POST 요청이 필요합니다.");
+  if (req.method !== "POST") return plainFail(405,"METHOD","POST 요청이 필요합니다.");
+  const started = Date.now();
+  let owner: string | null = null;
+  let auditClient: ReturnType<typeof createClient> | null = null;
+  const auditModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.6-flash";
+  const reply = async (status: number, value: Record<string, unknown>) => {
+    let recognitionId: string | null = null;
+    if (owner && auditClient) {
+      const id = crypto.randomUUID();
+      try {
+        const {error} = await auditClient.from("recognition_runs").insert(
+          auditRecord(value,status,owner,id,auditModel,Date.now()-started)
+        );
+        if (!error) recognitionId = id;
+        else console.warn("Recognition audit persistence failed");
+      } catch { console.warn("Recognition audit persistence failed"); }
+    }
+    return new Response(JSON.stringify({...value,recognition_id:recognitionId}),{status,headers});
+  };
+  const fail = (status:number,code:string,message:string) => reply(status,{code,message});
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {auth:{persistSession:false,autoRefreshToken:false}});
@@ -31,6 +51,7 @@ Deno.serve(async (req: Request) => {
     // Required even with gateway JWT verification: reject public keys and expired/deleted sessions.
     const { data: { user }, error: authError } = await admin.auth.getUser(token);
     if (authError || !user || user.is_anonymous) return fail(401,"AUTH_REQUIRED","다시 로그인해 주세요.");
+    owner = user.id; auditClient = admin;
     const key = Deno.env.get("GEMINI_API_KEY");
     if (!key) return fail(503,"AI_NOT_CONFIGURED","AI 연결 설정 중입니다. 잠시 후 다시 시도해 주세요.");
     // Read a bounded stream; Content-Length alone is not trusted.

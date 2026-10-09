@@ -9,6 +9,7 @@ import '../models/official_stamp.dart';
 class Recognition {
   final List<OfficialStamp> candidates;
   final String matchStatus;
+  final String? recognitionId;
   final OfficialStamp? official;
   final bool isStamp;
   final String name,
@@ -24,6 +25,7 @@ class Recognition {
               .whereType<Map>()
               .map((r) => OfficialStamp(Map<String, dynamic>.from(r)))
               .toList(),
+      recognitionId = map['recognition_id'] as String?,
       matchStatus = map['match_status']?.toString() ?? 'no_match',
       official =
           map['official'] is Map
@@ -39,6 +41,7 @@ class Recognition {
       uncertainty = map['uncertainty'] as String;
 
   Recognition choose(OfficialStamp stamp) => Recognition.fromMap({
+    'recognition_id': recognitionId,
     'is_stamp': isStamp,
     'name': name,
     'country': country,
